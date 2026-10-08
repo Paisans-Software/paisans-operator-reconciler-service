@@ -1,15 +1,15 @@
-// Command admin-guard runs beside Pocket ID in the pocket-id kind's stack. It
+// Command admin-reconciler runs beside Pocket ID in the pocket-id kind's stack. It
 // keeps Pocket ID's administrators in the admins group and serves /healthz,
 // which fails while that group has fewer than two members. See
-// docs/specs/2026-10-08-admin-guard.md.
+// docs/specs/2026-10-08-admin-reconciler.md.
 //
-//	admin-guard               run: a pass now, then one every two hours
-//	admin-guard healthcheck   exit 0 if the running guard is alive (/livez)
+//	admin-reconciler               run: a pass now, then one every two hours
+//	admin-reconciler healthcheck   exit 0 if the running reconciler is alive (/livez)
 //
 // It reads its environment from the stack's .env:
 //
 //	STATIC_API_KEY             Pocket ID's static API key
-//	PAISANS_GUARD_POCKET_ID    Pocket ID's address on the stack's network
+//	PAISANS_RECONCILER_POCKET_ID    Pocket ID's address on the stack's network
 package main
 
 import (
@@ -21,7 +21,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/paisans-software/paisans-stack/internal/adminguard"
+	"github.com/paisans-software/paisans-stack/internal/adminreconciler"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
@@ -43,11 +43,11 @@ func main() {
 
 func run() error {
 	key := os.Getenv("STATIC_API_KEY")
-	base := os.Getenv("PAISANS_GUARD_POCKET_ID")
+	base := os.Getenv("PAISANS_RECONCILER_POCKET_ID")
 	if key == "" || base == "" {
-		return errors.New("STATIC_API_KEY and PAISANS_GUARD_POCKET_ID must both be set; the pocket-id kind's .env renders them")
+		return errors.New("STATIC_API_KEY and PAISANS_RECONCILER_POCKET_ID must both be set; the pocket-id kind's .env renders them")
 	}
-	g := &adminguard.Guard{
+	g := &adminreconciler.Reconciler{
 		API:     &pocketid.Client{HTTP: &http.Client{Timeout: 30 * time.Second}, BaseURL: base, APIKey: key},
 		Standby: standby,
 		Now:     time.Now,
@@ -65,7 +65,7 @@ func run() error {
 		w.WriteHeader(code)
 		fmt.Fprintln(w, body)
 	})
-	// Docker's healthcheck: alive, whatever admins holds. See Guard.Live.
+	// Docker's healthcheck: alive, whatever admins holds. See Reconciler.Live.
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
 		if !g.Live() {
 			http.Error(w, "stale", http.StatusServiceUnavailable)

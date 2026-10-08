@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// The healthcheck passes only on a 200, and a guard that does not answer
+// The healthcheck passes only on a 200, and a reconciler that does not answer
 // fails it.
 func TestHealthcheckFollowsTheStatus(t *testing.T) {
 	for code, want := range map[int]int{200: 0, 503: 1} {

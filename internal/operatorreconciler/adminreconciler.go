@@ -1,13 +1,13 @@
-// Package adminguard keeps Pocket ID's administrators in the admins group and
+// Package adminreconciler keeps Pocket ID's administrators in the admins group and
 // reports whether that group is large enough to survive losing one of them.
 //
-// See docs/specs/2026-10-08-admin-guard.md. Its one write, adding an
+// See docs/specs/2026-10-08-admin-reconciler.md. Its one write, adding an
 // administrator to admins, is a standing exception to the rule that every
 // Pocket ID group change needs a human's approval, granted by the founder on
 // 2026-10-08 and recorded in docs/decisions.md. The API key it holds can do
 // anything, so the narrowness lives here: nothing in this package removes a
 // member, changes a user, or touches a group, and the tests fail if it does.
-package adminguard
+package adminreconciler
 
 import (
 	"fmt"
@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	// Group is the group the guard keeps administrators in. It is fixed,
+	// Group is the group the reconciler keeps administrators in. It is fixed,
 	// not configured: validate warns when an app reads another one.
 	Group = "admins"
 	// Minimum is the fewest members admins may have and be healthy.
@@ -29,7 +29,7 @@ const (
 	// Interval is the time between passes.
 	Interval = 2 * time.Hour
 	// RetryAfter is the wait after a pass that could not read Pocket ID. The
-	// guard and Pocket ID start together, so the first pass can find it still
+	// reconciler and Pocket ID start together, so the first pass can find it still
 	// starting, and a two hour wait would hold that answer for two hours.
 	RetryAfter = time.Minute
 	// StaleAfter is how old the last pass may be before /healthz stops
@@ -39,11 +39,11 @@ const (
 	StaleAfter = Interval + 30*time.Minute
 	// SyntheticUserID is the user Pocket ID creates for its static API key
 	// (common/reserved.go:5 at v2.14.0), an administrator that is the
-	// guard's own credential rather than a person.
+	// reconciler's own credential rather than a person.
 	SyntheticUserID = "00000000-0000-0000-0000-000000000000"
 )
 
-// PocketID is the part of the Pocket ID API the guard uses. The only method
+// PocketID is the part of the Pocket ID API the reconciler uses. The only method
 // here that writes is SetUserGroups.
 type PocketID interface {
 	FindGroup(name string) (*pocketid.Group, error)
@@ -71,8 +71,8 @@ func (r Result) Next() time.Duration {
 	return Interval
 }
 
-// Guard runs passes and remembers the last one.
-type Guard struct {
+// Reconciler runs passes and remembers the last one.
+type Reconciler struct {
 	API PocketID
 	// Standby reports whether the local Pocket ID is a standby, from the
 	// marker the standby wrapper writes.
@@ -86,7 +86,7 @@ type Guard struct {
 }
 
 // Pass runs one pass, remembers its result and returns it.
-func (g *Guard) Pass() Result {
+func (g *Reconciler) Pass() Result {
 	r := g.pass()
 	r.At = g.Now()
 	g.Log("pass: %s", r.Message)
@@ -101,7 +101,7 @@ func (g *Guard) Pass() Result {
 // healthcheck reads this rather than Status, so apply's health gate does not
 // hold a deployment back on an admins group nobody has made yet; the uptime
 // monitor reads Status.
-func (g *Guard) Live() bool {
+func (g *Reconciler) Live() bool {
 	g.mu.Lock()
 	last := g.last
 	g.mu.Unlock()
@@ -110,7 +110,7 @@ func (g *Guard) Live() bool {
 
 // Status is the HTTP status and one line body /healthz serves: the last
 // pass, unless there has been none or it is stale.
-func (g *Guard) Status() (int, string) {
+func (g *Reconciler) Status() (int, string) {
 	g.mu.Lock()
 	last := g.last
 	g.mu.Unlock()
@@ -130,7 +130,7 @@ func unhealthy(format string, args ...any) Result {
 	return Result{Message: oneLine(fmt.Sprintf(format, args...))}
 }
 
-func (g *Guard) pass() Result {
+func (g *Reconciler) pass() Result {
 	if g.Standby() {
 		return Result{Healthy: true, Message: "standby"}
 	}
@@ -193,7 +193,7 @@ func (g *Guard) pass() Result {
 // returns the user when they are a member afterwards, whether this write put
 // them there or they joined since the list, and nil when they no longer
 // qualify.
-func (g *Guard) add(id, groupID string) (*pocketid.User, error) {
+func (g *Reconciler) add(id, groupID string) (*pocketid.User, error) {
 	u, err := g.API.User(id)
 	if err != nil {
 		return nil, err
@@ -220,7 +220,7 @@ func (g *Guard) add(id, groupID string) (*pocketid.User, error) {
 	return &u, nil
 }
 
-// eligible is an administrator the guard puts in the group: enabled, a
+// eligible is an administrator the reconciler puts in the group: enabled, a
 // person rather than the static key's user, and not managed by an LDAP sync,
 // which owns that user's groups.
 func eligible(u pocketid.User) bool {

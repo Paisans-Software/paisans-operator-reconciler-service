@@ -1,4 +1,4 @@
-package adminguard_test
+package adminreconciler_test
 
 import (
 	"encoding/json"
@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paisans-software/paisans-stack/internal/adminguard"
+	"github.com/paisans-software/paisans-stack/internal/adminreconciler"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
@@ -29,7 +29,7 @@ type fakeUser struct {
 }
 
 // fakePocketID is a Pocket ID that keeps users and groups, answers the
-// routes the guard is allowed to use, and records every request. A request to
+// routes the reconciler is allowed to use, and records every request. A request to
 // any other route is answered 405 and recorded as forbidden.
 type fakePocketID struct {
 	mu        sync.Mutex
@@ -39,7 +39,7 @@ type fakePocketID struct {
 	forbidden []string
 	failWrite map[string]bool // user IDs whose write answers 500
 	down      bool
-	// beforeWrite runs between the guard's fresh read and its write, to
+	// beforeWrite runs between the reconciler's fresh read and its write, to
 	// change a user under it.
 	onRead func(id string)
 }
@@ -158,13 +158,13 @@ type clock struct{ now time.Time }
 
 func (c *clock) Now() time.Time { return c.now }
 
-func guardFor(t *testing.T, f *fakePocketID, standby bool) (*adminguard.Guard, *clock, *strings.Builder) {
+func reconcilerFor(t *testing.T, f *fakePocketID, standby bool) (*adminreconciler.Reconciler, *clock, *strings.Builder) {
 	t.Helper()
 	srv := httptest.NewServer(f)
 	t.Cleanup(srv.Close)
 	c := &clock{now: time.Date(2026, 10, 8, 12, 0, 0, 0, time.UTC)}
 	log := &strings.Builder{}
-	g := &adminguard.Guard{
+	g := &adminreconciler.Reconciler{
 		API:     &pocketid.Client{HTTP: srv.Client(), BaseURL: srv.URL, APIKey: key},
 		Standby: func() bool { return standby },
 		Now:     c.Now,
@@ -172,7 +172,7 @@ func guardFor(t *testing.T, f *fakePocketID, standby bool) (*adminguard.Guard, *
 	}
 	t.Cleanup(func() {
 		if len(f.forbidden) > 0 {
-			t.Errorf("the guard made requests it may not make: %q", f.forbidden)
+			t.Errorf("the reconciler made requests it may not make: %q", f.forbidden)
 		}
 		// Every write is the one sanctioned shape: a user's own groups plus
 		// admins, nothing taken away.
@@ -185,7 +185,7 @@ func guardFor(t *testing.T, f *fakePocketID, standby bool) (*adminguard.Guard, *
 	return g, c, log
 }
 
-func status(g *adminguard.Guard) (int, string) { return g.Status() }
+func status(g *adminreconciler.Reconciler) (int, string) { return g.Status() }
 
 // A Pocket ID administrator outside admins is added, keeping their other
 // groups, and the pass is healthy once two are in.
@@ -194,7 +194,7 @@ func TestAMissingAdministratorIsAdded(t *testing.T) {
 		add(fakeUser{ID: "a", Username: "alice", IsAdmin: true, Groups: []string{"gA"}}).
 		add(fakeUser{ID: "b", Username: "bob", IsAdmin: true, Groups: []string{"gM"}}).
 		add(fakeUser{ID: "c", Username: "carol", Groups: []string{"gM"}})
-	g, _, log := guardFor(t, f, false)
+	g, _, log := reconcilerFor(t, f, false)
 	g.Pass()
 
 	if want := []string{"PUT b gM,gA"}; fmt.Sprint(f.writes) != fmt.Sprint(want) {
@@ -212,12 +212,12 @@ func TestAMissingAdministratorIsAdded(t *testing.T) {
 // are never added, and none of them counts.
 func TestExcludedUsersAreNeitherAddedNorCounted(t *testing.T) {
 	f := newFake().
-		add(fakeUser{ID: adminguard.SyntheticUserID, Username: "static-api-user-x1y2z3", IsAdmin: true, Groups: []string{"gA"}}).
+		add(fakeUser{ID: adminreconciler.SyntheticUserID, Username: "static-api-user-x1y2z3", IsAdmin: true, Groups: []string{"gA"}}).
 		add(fakeUser{ID: "l", Username: "lara", IsAdmin: true, LdapID: "cn=lara"}).
 		add(fakeUser{ID: "d", Username: "dave", IsAdmin: true, Disabled: true}).
 		add(fakeUser{ID: "e", Username: "erin", Disabled: true, Groups: []string{"gA"}}).
 		add(fakeUser{ID: "a", Username: "alice", IsAdmin: true, Groups: []string{"gA"}})
-	g, _, _ := guardFor(t, f, false)
+	g, _, _ := reconcilerFor(t, f, false)
 	g.Pass()
 
 	if len(f.writes) != 0 {
@@ -232,13 +232,13 @@ func TestExcludedUsersAreNeitherAddedNorCounted(t *testing.T) {
 	}
 }
 
-// Members of admins who are not Pocket ID administrators stay: the guard
+// Members of admins who are not Pocket ID administrators stay: the reconciler
 // never removes anyone.
 func TestNobodyIsRemoved(t *testing.T) {
 	f := newFake().
 		add(fakeUser{ID: "a", Username: "alice", Groups: []string{"gA"}}).
 		add(fakeUser{ID: "b", Username: "bob", Groups: []string{"gA", "gM"}})
-	g, _, _ := guardFor(t, f, false)
+	g, _, _ := reconcilerFor(t, f, false)
 	g.Pass()
 	if len(f.writes) != 0 {
 		t.Errorf("wrote %q, want nothing", f.writes)
@@ -262,7 +262,7 @@ func TestTheWriteUsesAFreshRead(t *testing.T) {
 		}
 		f.mu.Unlock()
 	}
-	g, _, _ := guardFor(t, f, false)
+	g, _, _ := reconcilerFor(t, f, false)
 	g.Pass()
 	if want := []string{"PUT b gX,gA"}; fmt.Sprint(f.writes) != fmt.Sprint(want) {
 		t.Fatalf("writes %q, want %q", f.writes, want)
@@ -286,7 +286,7 @@ func TestAUserWhoChangedSinceTheListIsLeftAlone(t *testing.T) {
 		}
 		f.mu.Unlock()
 	}
-	g, _, _ := guardFor(t, f, false)
+	g, _, _ := reconcilerFor(t, f, false)
 	g.Pass()
 	if len(f.writes) != 0 {
 		t.Errorf("wrote %q, want nothing", f.writes)
@@ -297,7 +297,7 @@ func TestAUserWhoChangedSinceTheListIsLeftAlone(t *testing.T) {
 func TestAStandbyDoesNothing(t *testing.T) {
 	f := newFake()
 	f.down = true
-	g, _, _ := guardFor(t, f, true)
+	g, _, _ := reconcilerFor(t, f, true)
 	g.Pass()
 	if code, body := status(g); code != 200 || body != "standby" {
 		t.Errorf("status %d %q", code, body)
@@ -330,7 +330,7 @@ func TestUnhealthyStates(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			f := newFake()
 			c.setup(f)
-			g, _, _ := guardFor(t, f, false)
+			g, _, _ := reconcilerFor(t, f, false)
 			g.Pass()
 			code, body := status(g)
 			if code != 503 || !strings.Contains(body, c.want) {
@@ -346,18 +346,18 @@ func TestUnhealthyStates(t *testing.T) {
 	}
 }
 
-// Before any pass the guard is starting, and a pass older than the stale
+// Before any pass the reconciler is starting, and a pass older than the stale
 // limit is reported as stale rather than as its old answer.
 func TestStartingAndStale(t *testing.T) {
 	f := newFake().
 		add(fakeUser{ID: "a", Username: "alice", Groups: []string{"gA"}}).
 		add(fakeUser{ID: "b", Username: "bob", Groups: []string{"gA"}})
-	g, c, _ := guardFor(t, f, false)
+	g, c, _ := reconcilerFor(t, f, false)
 	if code, body := status(g); code != 503 || body != "starting" {
 		t.Errorf("before a pass: %d %q", code, body)
 	}
 	g.Pass()
-	c.now = c.now.Add(adminguard.StaleAfter - time.Minute)
+	c.now = c.now.Add(adminreconciler.StaleAfter - time.Minute)
 	if code, _ := status(g); code != 200 {
 		t.Errorf("a recent pass: %d", code)
 	}
@@ -368,13 +368,13 @@ func TestStartingAndStale(t *testing.T) {
 }
 
 // A pass that could not read Pocket ID asks to be retried soon, because the
-// guard and Pocket ID start together and the first pass may find it still
+// reconciler and Pocket ID start together and the first pass may find it still
 // starting. A pass that read Pocket ID waits the full interval, whatever it
 // found.
 func TestOnlyAnUnreadablePocketIDIsRetriedSoon(t *testing.T) {
 	down := newFake()
 	down.down = true
-	g, _, _ := guardFor(t, down, false)
+	g, _, _ := reconcilerFor(t, down, false)
 	if r := g.Pass(); !r.Retry {
 		t.Errorf("Pocket ID did not answer, and the pass did not ask for a retry: %+v", r)
 	}
@@ -382,7 +382,7 @@ func TestOnlyAnUnreadablePocketIDIsRetriedSoon(t *testing.T) {
 		"no group":   func() *fakePocketID { f := newFake(); delete(f.groups, "gA"); return f }(),
 		"one member": newFake().add(fakeUser{ID: "a", Username: "alice", Groups: []string{"gA"}}),
 	} {
-		g, _, _ := guardFor(t, f, false)
+		g, _, _ := reconcilerFor(t, f, false)
 		if r := g.Pass(); r.Retry {
 			t.Errorf("%s: a pass that read Pocket ID asked for a retry: %+v", name, r)
 		}
@@ -395,7 +395,7 @@ func TestOnlyAnUnreadablePocketIDIsRetriedSoon(t *testing.T) {
 func TestLivenessIgnoresTheCount(t *testing.T) {
 	f := newFake()
 	delete(f.groups, "gA")
-	g, c, _ := guardFor(t, f, false)
+	g, c, _ := reconcilerFor(t, f, false)
 	if !g.Live() {
 		t.Error("not alive before the first pass")
 	}
@@ -403,7 +403,7 @@ func TestLivenessIgnoresTheCount(t *testing.T) {
 	if !g.Live() {
 		t.Error("not alive with no admins group")
 	}
-	c.now = c.now.Add(adminguard.StaleAfter + time.Minute)
+	c.now = c.now.Add(adminreconciler.StaleAfter + time.Minute)
 	if g.Live() {
 		t.Error("alive with a stale pass")
 	}

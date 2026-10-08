@@ -1,13 +1,13 @@
 //go:build pocketid_integration
 
-// This file runs one guard pass against a real ghcr.io/pocket-id/pocket-id
-// container, the version the pocket-id kind pins, so what the guard assumes
+// This file runs one reconciler pass against a real ghcr.io/pocket-id/pocket-id
+// container, the version the pocket-id kind pins, so what the reconciler assumes
 // about the API (the list carries each user's groups, the static key's user is
 // an administrator with a fixed ID, and the user-groups route replaces a
 // user's set) is checked against Pocket ID rather than against the fake.
 //
-//	go test -tags pocketid_integration ./internal/adminguard/
-package adminguard_test
+//	go test -tags pocketid_integration ./internal/adminreconciler/
+package adminreconciler_test
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paisans-software/paisans-stack/internal/adminguard"
+	"github.com/paisans-software/paisans-stack/internal/adminreconciler"
 	"github.com/paisans-software/paisans-stack/internal/config"
 	"github.com/paisans-software/paisans-stack/internal/kinds"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
@@ -32,7 +32,7 @@ func startPocketID(t *testing.T) *pocketid.Client {
 	if !ok {
 		t.Fatal("the pocket-id kind names no app image")
 	}
-	name := fmt.Sprintf("paisans-guard-it-%d", time.Now().UnixNano())
+	name := fmt.Sprintf("paisans-reconciler-it-%d", time.Now().UnixNano())
 	out, err := exec.Command("docker", "run", "-d", "--name", name, "-p", "127.0.0.1::1411",
 		"-e", "APP_URL=http://localhost:1411",
 		"-e", "ENCRYPTION_KEY=0123456789abcdef0123456789abcdef",
@@ -88,7 +88,7 @@ func TestRealPocketIDAdministratorIsAdded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	g := &adminguard.Guard{API: c, Standby: func() bool { return false }, Now: time.Now, Log: t.Logf}
+	g := &adminreconciler.Reconciler{API: c, Standby: func() bool { return false }, Now: time.Now, Log: t.Logf}
 	r := g.Pass()
 	if !r.Healthy || !strings.Contains(r.Message, "2 members (alice, bob)") {
 		t.Fatalf("pass: %+v", r)
@@ -101,7 +101,7 @@ func TestRealPocketIDAdministratorIsAdded(t *testing.T) {
 	if !got.InGroup(admins.ID) || !got.InGroup(editors.ID) {
 		t.Errorf("bob's groups after the pass: %+v, want admins and editors", got.UserGroups)
 	}
-	synthetic, err := c.User(adminguard.SyntheticUserID)
+	synthetic, err := c.User(adminreconciler.SyntheticUserID)
 	if err != nil {
 		t.Fatal(err)
 	}

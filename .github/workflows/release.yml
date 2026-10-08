@@ -1,22 +1,22 @@
-# Builds and publishes ghcr.io/paisans-software/admin-guard.
+# Builds and publishes ghcr.io/paisans-software/admin-reconciler.
 #
-# A tag admin-guard-vX.Y.Z publishes X.Y.Z; a push to develop publishes
+# A tag admin-reconciler-vX.Y.Z publishes X.Y.Z; a push to develop publishes
 # develop and sha-<short>. The pocket-id kind pins a published image by
 # digest in internal/kinds, so nothing a deployment runs moves when this
 # workflow runs again.
-name: admin-guard image
+name: admin-reconciler image
 
 on:
   push:
     branches: [develop]
-    tags: ["admin-guard-v*"]
+    tags: ["admin-reconciler-v*"]
     paths:
-      - "cmd/admin-guard/**"
-      - "internal/adminguard/**"
+      - "cmd/admin-reconciler/**"
+      - "internal/adminreconciler/**"
       - "internal/pocketid/**"
       - "go.mod"
       - "go.sum"
-      - ".github/workflows/admin-guard-image.yml"
+      - ".github/workflows/admin-reconciler-image.yml"
   workflow_dispatch:
 
 permissions:
@@ -32,7 +32,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test
-        run: go test ./internal/adminguard/ ./internal/pocketid/ ./cmd/admin-guard/
+        run: go test ./internal/adminreconciler/ ./internal/pocketid/ ./cmd/admin-reconciler/
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -43,15 +43,15 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/paisans-software/admin-guard
+          images: ghcr.io/paisans-software/admin-reconciler
           tags: |
-            type=match,pattern=admin-guard-v(.*),group=1
+            type=match,pattern=admin-reconciler-v(.*),group=1
             type=ref,event=branch
             type=sha
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: cmd/admin-guard/Dockerfile
+          file: cmd/admin-reconciler/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
