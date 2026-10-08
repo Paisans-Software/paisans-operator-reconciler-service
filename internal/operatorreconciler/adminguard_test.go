@@ -366,3 +366,45 @@ func TestStartingAndStale(t *testing.T) {
 		t.Errorf("an old pass: %d %q", code, body)
 	}
 }
+
+// A pass that could not read Pocket ID asks to be retried soon, because the
+// guard and Pocket ID start together and the first pass may find it still
+// starting. A pass that read Pocket ID waits the full interval, whatever it
+// found.
+func TestOnlyAnUnreadablePocketIDIsRetriedSoon(t *testing.T) {
+	down := newFake()
+	down.down = true
+	g, _, _ := guardFor(t, down, false)
+	if r := g.Pass(); !r.Retry {
+		t.Errorf("Pocket ID did not answer, and the pass did not ask for a retry: %+v", r)
+	}
+	for name, f := range map[string]*fakePocketID{
+		"no group":   func() *fakePocketID { f := newFake(); delete(f.groups, "gA"); return f }(),
+		"one member": newFake().add(fakeUser{ID: "a", Username: "alice", Groups: []string{"gA"}}),
+	} {
+		g, _, _ := guardFor(t, f, false)
+		if r := g.Pass(); r.Retry {
+			t.Errorf("%s: a pass that read Pocket ID asked for a retry: %+v", name, r)
+		}
+	}
+}
+
+// Liveness is not health: the container is alive before the first pass and
+// while admins is short, so apply's health gate does not hold a deployment
+// back on a group nobody has made yet. Only a hung pass loop is not alive.
+func TestLivenessIgnoresTheCount(t *testing.T) {
+	f := newFake()
+	delete(f.groups, "gA")
+	g, c, _ := guardFor(t, f, false)
+	if !g.Live() {
+		t.Error("not alive before the first pass")
+	}
+	g.Pass()
+	if !g.Live() {
+		t.Error("not alive with no admins group")
+	}
+	c.now = c.now.Add(adminguard.StaleAfter + time.Minute)
+	if g.Live() {
+		t.Error("alive with a stale pass")
+	}
+}

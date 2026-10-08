@@ -4,7 +4,7 @@
 // docs/specs/2026-10-08-admin-guard.md.
 //
 //	admin-guard               run: a pass now, then one every two hours
-//	admin-guard healthcheck   exit 0 if the running guard answers 200
+//	admin-guard healthcheck   exit 0 if the running guard is alive (/livez)
 //
 // It reads its environment from the stack's .env:
 //
@@ -34,7 +34,7 @@ const (
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		os.Exit(healthcheck("http://127.0.0.1" + listen + "/healthz"))
+		os.Exit(healthcheck("http://127.0.0.1" + listen + "/livez"))
 	}
 	if err := run(); err != nil {
 		log.Fatal(err)
@@ -55,8 +55,7 @@ func run() error {
 	}
 	go func() {
 		for {
-			g.Pass()
-			time.Sleep(adminguard.Interval)
+			time.Sleep(g.Pass().Next())
 		}
 	}()
 	mux := http.NewServeMux()
@@ -65,6 +64,14 @@ func run() error {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(code)
 		fmt.Fprintln(w, body)
+	})
+	// Docker's healthcheck: alive, whatever admins holds. See Guard.Live.
+	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
+		if !g.Live() {
+			http.Error(w, "stale", http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprintln(w, "alive")
 	})
 	srv := &http.Server{Addr: listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	return srv.ListenAndServe()
@@ -76,7 +83,8 @@ func standby() bool {
 }
 
 // healthcheck is Docker's healthcheck: the image has no shell or curl, so the
-// binary asks itself.
+// binary asks itself. It asks /livez, not /healthz: a deployment whose admins
+// group is short is alive, and the uptime monitor is what reports it.
 func healthcheck(url string) int {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(url)

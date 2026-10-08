@@ -28,6 +28,10 @@ const (
 	Minimum = 2
 	// Interval is the time between passes.
 	Interval = 2 * time.Hour
+	// RetryAfter is the wait after a pass that could not read Pocket ID. The
+	// guard and Pocket ID start together, so the first pass can find it still
+	// starting, and a two hour wait would hold that answer for two hours.
+	RetryAfter = time.Minute
 	// StaleAfter is how old the last pass may be before /healthz stops
 	// trusting it, half an hour past the interval: a pass loop that hung
 	// while the HTTP server still answers would otherwise report its last
@@ -54,6 +58,17 @@ type Result struct {
 	// Message is one line, naming users by username, never by email.
 	Message string
 	At      time.Time
+	// Retry is set when the pass could not read Pocket ID, and the next one
+	// should come after RetryAfter rather than Interval.
+	Retry bool
+}
+
+// Next is how long to wait before the pass after r.
+func (r Result) Next() time.Duration {
+	if r.Retry {
+		return RetryAfter
+	}
+	return Interval
 }
 
 // Guard runs passes and remembers the last one.
@@ -79,6 +94,18 @@ func (g *Guard) Pass() Result {
 	g.last = &r
 	g.mu.Unlock()
 	return r
+}
+
+// Live reports whether the pass loop is running: true before the first pass
+// and whatever the last one found, false only once it is stale. Docker's
+// healthcheck reads this rather than Status, so apply's health gate does not
+// hold a deployment back on an admins group nobody has made yet; the uptime
+// monitor reads Status.
+func (g *Guard) Live() bool {
+	g.mu.Lock()
+	last := g.last
+	g.mu.Unlock()
+	return last == nil || g.Now().Sub(last.At) <= StaleAfter
 }
 
 // Status is the HTTP status and one line body /healthz serves: the last
@@ -109,14 +136,18 @@ func (g *Guard) pass() Result {
 	}
 	group, err := g.API.FindGroup(Group)
 	if err != nil {
-		return unhealthy("reading groups: %v", err)
+		r := unhealthy("reading groups: %v", err)
+		r.Retry = true
+		return r
 	}
 	if group == nil {
 		return unhealthy("no group named %s", Group)
 	}
 	users, err := g.API.Users()
 	if err != nil {
-		return unhealthy("reading users: %v", err)
+		r := unhealthy("reading users: %v", err)
+		r.Retry = true
+		return r
 	}
 
 	members := map[string]string{} // ID to username
