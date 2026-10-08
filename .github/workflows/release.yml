@@ -1,0 +1,58 @@
+# Builds and publishes ghcr.io/paisans-software/admin-guard.
+#
+# A tag admin-guard-vX.Y.Z publishes X.Y.Z; a push to develop publishes
+# develop and sha-<short>. The pocket-id kind pins a published image by
+# digest in internal/kinds, so nothing a deployment runs moves when this
+# workflow runs again.
+name: admin-guard image
+
+on:
+  push:
+    branches: [develop]
+    tags: ["admin-guard-v*"]
+    paths:
+      - "cmd/admin-guard/**"
+      - "internal/adminguard/**"
+      - "internal/pocketid/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/admin-guard-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Test
+        run: go test ./internal/adminguard/ ./internal/pocketid/ ./cmd/admin-guard/
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/paisans-software/admin-guard
+          tags: |
+            type=match,pattern=admin-guard-v(.*),group=1
+            type=ref,event=branch
+            type=sha
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: cmd/admin-guard/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
