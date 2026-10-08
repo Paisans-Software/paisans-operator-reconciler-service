@@ -50,7 +50,7 @@ func startPocketID(t *testing.T) *pocketid.Client {
 	for deadline := time.Now().Add(90 * time.Second); ; {
 		if resp, err := http.Get(base + "/healthz"); err == nil {
 			resp.Body.Close()
-			if resp.StatusCode / 100 == 2 {
+			if resp.StatusCode/100 == 2 {
 				break
 			}
 		}
