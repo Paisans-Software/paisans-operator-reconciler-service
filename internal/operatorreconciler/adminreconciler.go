@@ -2,11 +2,13 @@
 // reports whether that group is large enough to survive losing one of them.
 //
 // See docs/specs/2026-10-08-admin-reconciler.md. Its one write, adding an
-// administrator to admins, is a standing exception to the rule that every
-// Pocket ID group change needs a human's approval, granted by the founder on
-// 2026-10-08 and recorded in docs/decisions.md. The API key it holds can do
-// anything, so the narrowness lives here: nothing in this package removes a
-// member, changes a user, or touches a group, and the tests fail if it does.
+// administrator to admins, was approved by the founder on 2026-10-08 as a
+// service the deployment runs (docs/deployment-agent-rules.md, "Services the
+// deployment runs"), recorded in docs/decisions.md. That approval covers this
+// write only, and only while the tests below hold it to that. The API key it
+// holds can do anything, so the narrowness lives here: nothing in this package
+// removes a member, changes a user, or touches a group, and the tests fail if
+// it does.
 package adminreconciler
 
 import (
