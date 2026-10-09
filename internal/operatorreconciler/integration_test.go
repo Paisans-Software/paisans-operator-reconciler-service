@@ -108,6 +108,22 @@ func TestRealPocketIDAdministratorIsAdded(t *testing.T) {
 	if !synthetic.IsAdmin || synthetic.InGroup(admins.ID) {
 		t.Errorf("the static key's user: admin %v, in admins %v; want an administrator left out", synthetic.IsAdmin, synthetic.InGroup(admins.ID))
 	}
+
+	// Demoted, bob is removed on the next pass, keeping editors.
+	if err := c.Demote(got); err != nil {
+		t.Fatal(err)
+	}
+	r = g.Pass()
+	if r.Healthy || !strings.Contains(r.Message, "1 member (alice)") {
+		t.Fatalf("pass after demotion: %+v", r)
+	}
+	got, err = c.User(bob.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.InGroup(admins.ID) || !got.InGroup(editors.ID) {
+		t.Errorf("bob's groups after demotion: %+v, want editors only", got.UserGroups)
+	}
 }
 
 func ptr(s string) *string { return &s }

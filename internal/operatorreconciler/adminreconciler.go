@@ -1,14 +1,17 @@
-// Package adminreconciler keeps Pocket ID's administrators in the admins group and
-// reports whether that group is large enough to survive losing one of them.
+// Package adminreconciler keeps the admins group equal to Pocket ID's
+// administrators and reports whether that group is large enough to survive
+// losing one of them.
 //
-// See docs/specs/2026-10-08-admin-reconciler.md. Its one write, adding an
-// administrator to admins, was approved by the founder on 2026-10-08 as a
-// service the deployment runs (docs/deployment-agent-rules.md, "Services the
-// deployment runs"), recorded in docs/decisions.md. That approval covers this
-// write only, and only while the tests below hold it to that. The API key it
-// holds can do anything, so the narrowness lives here: nothing in this package
-// removes a member, changes a user, or touches a group, and the tests fail if
-// it does.
+// See docs/specs/2026-10-08-admin-reconciler.md. Its two writes were each
+// approved by the founder on 2026-10-08 as a service the deployment runs
+// (docs/deployment-agent-rules.md, "Services the deployment runs"), recorded
+// in docs/decisions.md: adding an administrator to admins, and removing a
+// member who is no longer an enabled administrator, the second only while an
+// enabled member remains. That approval covers these writes only, and only
+// while the tests below hold it to that. The API key it holds can do
+// anything, so the narrowness lives here: nothing in this package changes a
+// user, touches a group, or writes a user an LDAP sync manages, and the tests
+// fail if it does.
 package adminreconciler
 
 import (
@@ -46,7 +49,7 @@ const (
 )
 
 // PocketID is the part of the Pocket ID API the reconciler uses. The only method
-// here that writes is SetUserGroups.
+// here that writes is SetUserGroups, and it is called from add and remove only.
 type PocketID interface {
 	FindGroup(name string) (*pocketid.Group, error)
 	Users() ([]pocketid.User, error)
@@ -152,11 +155,19 @@ func (g *Reconciler) pass() Result {
 		return r
 	}
 
-	members := map[string]string{} // ID to username
+	// Adds come first, so that a swap of the group's only member for a new
+	// administrator never leaves it empty in between.
+	members := map[string]string{} // ID to username, those who count
+	var due []pocketid.User        // members the rule removes
 	var failures []string
 	for _, u := range users {
-		if counts(u) && u.InGroup(group.ID) {
-			members[u.ID] = u.Username
+		if u.InGroup(group.ID) {
+			if counts(u) {
+				members[u.ID] = u.Username
+			}
+			if removable(u) {
+				due = append(due, u)
+			}
 			continue
 		}
 		if !eligible(u) {
@@ -171,6 +182,38 @@ func (g *Reconciler) pass() Result {
 		}
 	}
 
+	// Removals, in username order so that which member stays when not all can
+	// go is the same on every pass. The group keeps at least one member who
+	// counts: a removal that would leave none is skipped and said so. A pass
+	// in which an add failed removes nobody, since the group may be short of
+	// the administrator that add was for.
+	var kept []string
+	if len(failures) > 0 && len(due) > 0 {
+		g.Log("an add failed; removing nobody this pass")
+	} else {
+		sort.Slice(due, func(i, j int) bool { return due[i].Username < due[j].Username })
+		remaining := len(members)
+		for _, u := range due {
+			cost := 0
+			if counts(u) {
+				cost = 1
+			}
+			if remaining-cost < 1 {
+				g.Log("keep %s (%s) in %s: no longer qualifies, but removing them would leave no enabled member", u.Username, u.ID, Group)
+				kept = append(kept, u.Username)
+				continue
+			}
+			removed, err := g.remove(u.ID, group.ID)
+			switch {
+			case err != nil:
+				failures = append(failures, fmt.Sprintf("could not remove %s: %v", u.Username, err))
+			case removed:
+				remaining -= cost
+				delete(members, u.ID)
+			}
+		}
+	}
+
 	names := make([]string, 0, len(members))
 	for _, name := range members {
 		names = append(names, name)
@@ -179,6 +222,10 @@ func (g *Reconciler) pass() Result {
 	count := fmt.Sprintf("%s has %d %s", Group, len(names), plural(len(names), "member", "members"))
 	if len(names) > 0 {
 		count += " (" + strings.Join(names, ", ") + ")"
+	}
+	if len(kept) > 0 {
+		sort.Strings(kept)
+		count += fmt.Sprintf("; kept %s, who no longer %s, because removing them would leave no enabled member", strings.Join(kept, ", "), plural(len(kept), "qualifies", "qualify"))
 	}
 	if len(failures) > 0 {
 		return unhealthy("%s; %s", strings.Join(failures, "; "), count)
@@ -222,11 +269,51 @@ func (g *Reconciler) add(id, groupID string) (*pocketid.User, error) {
 	return &u, nil
 }
 
+// remove takes one member out of the group. Like add, the user is read again
+// first and the write carries the groups that read found, minus the group,
+// so a group added since the list is kept. It reports whether the write was
+// made: false when the fresh read finds the user already out of the group or
+// qualifying again.
+func (g *Reconciler) remove(id, groupID string) (bool, error) {
+	u, err := g.API.User(id)
+	if err != nil {
+		return false, err
+	}
+	if !u.InGroup(groupID) || !removable(u) {
+		return false, nil
+	}
+	ids := make([]string, 0, len(u.UserGroups))
+	for _, grp := range u.UserGroups {
+		if grp.ID != groupID {
+			ids = append(ids, grp.ID)
+		}
+	}
+	if err := g.API.SetUserGroups(u.ID, ids); err != nil {
+		g.Log("remove %s (%s) from %s: failed: %v", u.Username, u.ID, Group, err)
+		return false, err
+	}
+	g.Log("remove %s (%s) from %s: removed", u.Username, u.ID, Group)
+	return true, nil
+}
+
 // eligible is an administrator the reconciler puts in the group: enabled, a
-// person rather than the static key's user, and not managed by an LDAP sync,
-// which owns that user's groups.
+// person rather than the static key's user, and one whose groups it writes.
 func eligible(u pocketid.User) bool {
-	return u.IsAdmin && counts(u) && (u.LdapID == nil || *u.LdapID == "")
+	return u.IsAdmin && counts(u) && written(u)
+}
+
+// removable is a member the reconciler takes out of the group: disabled or
+// no longer an administrator, and one whose groups it writes. It is the
+// mirror of eligible, and what the group's floor applies to.
+func removable(u pocketid.User) bool {
+	return written(u) && (u.Disabled || !u.IsAdmin)
+}
+
+// written is a user whose groups the reconciler may write in either
+// direction: not managed by an LDAP sync, which owns that user's groups, and
+// not the static key's user, which is the reconciler's own credential.
+func written(u pocketid.User) bool {
+	return (u.LdapID == nil || *u.LdapID == "") && u.ID != SyntheticUserID
 }
 
 // counts is a member who counts towards Minimum: enabled and a person.
