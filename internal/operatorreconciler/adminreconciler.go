@@ -104,8 +104,9 @@ func (g *Reconciler) Pass() Result {
 // Live reports whether the pass loop is running: true before the first pass
 // and whatever the last one found, false only once it is stale. Docker's
 // healthcheck reads this rather than Status, so apply's health gate does not
-// hold a deployment back on an admins group nobody has made yet; the uptime
-// monitor reads Status.
+// hold a deployment back on an admins group nobody has made yet. The uptime
+// monitor's per site check of this service reads it too, and the admins
+// heartbeat beside it pushes Status (internal/render/adminsheartbeat.go).
 func (g *Reconciler) Live() bool {
 	g.mu.Lock()
 	last := g.last
