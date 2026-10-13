@@ -15,6 +15,7 @@
 package adminreconciler
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sort"
@@ -22,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
@@ -66,6 +68,11 @@ type Result struct {
 	// Retry is set when the pass could not read Pocket ID, and the next one
 	// should come after RetryAfter rather than Interval.
 	Retry bool
+	// DNS is what the DNS continuity check found, nil when the reconciler has
+	// no DNS check or is on a standby.
+	DNS *dnscontinuity.Result
+	// standby is set when the pass found this instance a standby.
+	standby bool
 }
 
 // Next is how long to wait before the pass after r.
@@ -85,14 +92,32 @@ type Reconciler struct {
 	Now     func() time.Time
 	// Log records each write and each pass.
 	Log func(format string, args ...any)
+	// DNS is the DNS continuity check, nil when the deployment renders none
+	// (docs/specs/2026-10-13-dns-admin-continuity.md).
+	DNS *DNS
 
 	mu   sync.Mutex
 	last *Result
 }
 
+// DNS is the DNS continuity check: the account's members, and the keyed
+// hash and mapping every address is compared under. It only reads.
+type DNS struct {
+	Members dnscontinuity.Members
+	Hasher  dnscontinuity.Hasher
+	// Map is hash of a Pocket ID email to hash of the address that admin
+	// uses at the DNS provider, for the admins whose addresses differ.
+	Map map[string]string
+}
+
 // Pass runs one pass, remembers its result and returns it.
 func (g *Reconciler) Pass() Result {
 	r := g.pass()
+	if g.DNS != nil && !r.standby {
+		d := g.dns()
+		r.DNS = &d
+		g.Log("dns: super admins: %s; 2fa: %s", d.SuperAdmins.Message, d.TwoFA.Message)
+	}
 	r.At = g.Now()
 	g.Log("pass: %s", r.Message)
 	g.mu.Lock()
@@ -132,13 +157,75 @@ func (g *Reconciler) Status() (int, string) {
 	return http.StatusOK, last.Message
 }
 
+// DNSPath names one of the DNS check's two answers.
+type DNSPath int
+
+const (
+	DNSSuperAdmins DNSPath = iota
+	DNSTwoFA
+)
+
+// DNSStatus is the HTTP status and one line body of one of the DNS check's
+// paths, with /healthz's contract: standby on a standby, starting before the
+// first pass, stale after StaleAfter.
+func (g *Reconciler) DNSStatus(path DNSPath) (int, string) {
+	g.mu.Lock()
+	last := g.last
+	g.mu.Unlock()
+	if last == nil {
+		return http.StatusServiceUnavailable, "starting"
+	}
+	if g.Now().Sub(last.At) > StaleAfter {
+		return http.StatusServiceUnavailable, fmt.Sprintf("stale: the last pass finished at %s", last.At.UTC().Format(time.RFC3339))
+	}
+	if last.DNS == nil {
+		return http.StatusOK, "standby"
+	}
+	c := last.DNS.SuperAdmins
+	if path == DNSTwoFA {
+		c = last.DNS.TwoFA
+	}
+	if !c.Healthy {
+		return http.StatusServiceUnavailable, oneLine(c.Message)
+	}
+	return http.StatusOK, oneLine(c.Message)
+}
+
+// dns holds every enabled Pocket ID administrator to the DNS rule. It reads
+// the users itself rather than sharing the pass's read, so that a pass that
+// stopped early, on a missing group, still checks the zone.
+func (g *Reconciler) dns() dnscontinuity.Result {
+	users, err := g.API.Users()
+	if err != nil {
+		return dnscontinuity.Failed("pocket id unreadable")
+	}
+	var admins []dnscontinuity.Admin
+	for _, u := range users {
+		if !u.IsAdmin || !counts(u) {
+			continue
+		}
+		a := dnscontinuity.Admin{Username: u.Username}
+		if u.Email != nil {
+			a.Email = *u.Email
+		}
+		admins = append(admins, a)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	members, err := g.DNS.Members.Members(ctx)
+	if err != nil {
+		return dnscontinuity.Failed(err.Error())
+	}
+	return dnscontinuity.Evaluate(admins, members, g.DNS.Hasher, g.DNS.Map, g.Log)
+}
+
 func unhealthy(format string, args ...any) Result {
 	return Result{Message: oneLine(fmt.Sprintf(format, args...))}
 }
 
 func (g *Reconciler) pass() Result {
 	if g.Standby() {
-		return Result{Healthy: true, Message: "standby"}
+		return Result{Healthy: true, Message: "standby", standby: true}
 	}
 	group, err := g.API.FindGroup(Group)
 	if err != nil {

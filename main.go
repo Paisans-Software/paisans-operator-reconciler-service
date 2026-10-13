@@ -10,9 +10,18 @@
 //
 //	STATIC_API_KEY             Pocket ID's static API key
 //	PAISANS_RECONCILER_POCKET_ID    Pocket ID's address on the stack's network
+//
+// and, when the deployment checks its DNS provider's account
+// (docs/specs/2026-10-13-dns-admin-continuity.md), all of:
+//
+//	PAISANS_DNS_MEMBERS_TOKEN   a Cloudflare token that reads the account's members
+//	PAISANS_DNS_DOMAIN          the community domain, whose zone's account is checked
+//	PAISANS_DNS_EMAIL_HASH_KEY  the key every address is hashed under, hex
+//	PAISANS_DNS_EMAIL_MAP       hashed pairs for admins whose address differs
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -22,6 +31,7 @@ import (
 	"time"
 
 	"github.com/paisans-software/paisans-stack/internal/adminreconciler"
+	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
@@ -53,6 +63,11 @@ func run() error {
 		Now:     time.Now,
 		Log:     log.Printf,
 	}
+	dns, err := dnsCheck()
+	if err != nil {
+		return err
+	}
+	g.DNS = dns
 	go func() {
 		for {
 			time.Sleep(g.Pass().Next())
@@ -65,6 +80,19 @@ func run() error {
 		w.WriteHeader(code)
 		fmt.Fprintln(w, body)
 	})
+	if g.DNS != nil {
+		for path, which := range map[string]adminreconciler.DNSPath{
+			"GET /healthz/dns-super-admins": adminreconciler.DNSSuperAdmins,
+			"GET /healthz/dns-2fa":          adminreconciler.DNSTwoFA,
+		} {
+			mux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
+				code, body := g.DNSStatus(which)
+				w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+				w.WriteHeader(code)
+				fmt.Fprintln(w, body)
+			})
+		}
+	}
 	// Docker's healthcheck: alive, whatever admins holds. See Reconciler.Live.
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
 		if !g.Live() {
@@ -75,6 +103,29 @@ func run() error {
 	})
 	srv := &http.Server{Addr: listen, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	return srv.ListenAndServe()
+}
+
+// dnsCheck is the DNS continuity check the environment describes, nil when it
+// names no members token: a deployment without one renders none of the four.
+func dnsCheck() (*adminreconciler.DNS, error) {
+	token := os.Getenv("PAISANS_DNS_MEMBERS_TOKEN")
+	if token == "" {
+		return nil, nil
+	}
+	domain := os.Getenv("PAISANS_DNS_DOMAIN")
+	key, err := hex.DecodeString(os.Getenv("PAISANS_DNS_EMAIL_HASH_KEY"))
+	if domain == "" || err != nil || len(key) < 32 {
+		return nil, errors.New("PAISANS_DNS_MEMBERS_TOKEN is set, so PAISANS_DNS_DOMAIN and PAISANS_DNS_EMAIL_HASH_KEY, at least 32 bytes as hex, must be too; the pocket-id kind's .env renders all three")
+	}
+	mapping, err := dnscontinuity.ParseMap(os.Getenv("PAISANS_DNS_EMAIL_MAP"))
+	if err != nil {
+		return nil, err
+	}
+	return &adminreconciler.DNS{
+		Members: &dnscontinuity.Client{Token: token, Domain: domain, HTTP: &http.Client{Timeout: 30 * time.Second}},
+		Hasher:  dnscontinuity.Hasher{Key: key},
+		Map:     mapping,
+	}, nil
 }
 
 func standby() bool {

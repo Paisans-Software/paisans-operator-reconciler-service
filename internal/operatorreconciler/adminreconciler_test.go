@@ -25,6 +25,7 @@ type fakeUser struct {
 	IsAdmin  bool
 	Disabled bool
 	LdapID   string
+	Email    string
 	Groups   []string // group IDs
 }
 
@@ -76,6 +77,9 @@ func (f *fakePocketID) dto(u *fakeUser) map[string]any {
 	out := map[string]any{"id": u.ID, "username": u.Username, "isAdmin": u.IsAdmin, "disabled": u.Disabled, "userGroups": groups}
 	if u.LdapID != "" {
 		out["ldapId"] = u.LdapID
+	}
+	if u.Email != "" {
+		out["email"] = u.Email
 	}
 	return out
 }
