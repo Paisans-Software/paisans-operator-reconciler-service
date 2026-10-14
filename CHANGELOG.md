@@ -5,6 +5,10 @@ All notable changes to this project are documented here, in the
 
 ## [Unreleased]
 
+### Added
+
+- The image carries /THIRD_PARTY_NOTICES: the licenses and notices of the Go standard library and every module the binary links.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added
