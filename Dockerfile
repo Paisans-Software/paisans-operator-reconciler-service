@@ -10,6 +10,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /admin-reconciler ./cmd
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /admin-reconciler /admin-reconciler
+COPY --from=build /src/LICENSE /LICENSE
 USER nonroot
 EXPOSE 1412
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD ["/admin-reconciler", "healthcheck"]
