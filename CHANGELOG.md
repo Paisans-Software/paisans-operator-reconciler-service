@@ -5,6 +5,8 @@ All notable changes to this project are documented here, in the
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-14
+
 ### Added
 
 - The operator reconciler, from the paisans toolkit: it reads Pocket ID and, when configured, the DNS provider's account, writes nothing, and serves /healthz and /livez on port 1412.
