@@ -1,0 +1,27 @@
+name: changelog
+on:
+  pull_request:
+    branches: [develop]
+jobs:
+  changelog:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Unreleased changed, or kacl-skip
+        run: |
+          subject=$(git log -1 --format=%s "${{ github.event.pull_request.head.sha }}")
+          case "$subject" in kacl-skip:*|"[kacl-skip]"*) echo "skipped by $subject"; exit 0;; esac
+          section() { awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f' "$1"; }
+          git show "origin/${{ github.base_ref }}:CHANGELOG.md" > base.md 2>/dev/null || : > base.md
+          if diff -q <(section base.md) <(section CHANGELOG.md) >/dev/null; then
+            echo "::error::[Unreleased] in CHANGELOG.md did not change"; exit 1
+          fi
+      - name: Bullets are at most 35 words
+        run: |
+          awk '/^## \[Unreleased\]/{f=1;next} /^## \[/{f=0} f && /^- /' CHANGELOG.md |
+          while IFS= read -r line; do
+            n=$(printf '%s' "${line#- }" | wc -w)
+            if [ "$n" -gt 35 ]; then echo "::error::bullet has $n words: $line"; exit 1; fi
+          done

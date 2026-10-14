@@ -3,7 +3,9 @@
 // every operator is an enabled member in the member group and in operators,
 // that every enabled member of operators is an operator, and that every
 // Pocket ID administrator is an operator, with none under management:
-// paisans, and serves /healthz, which fails while any of them does not hold. See docs/specs/2026-10-14-operators-and-management.md.
+// paisans, and serves /healthz, which fails while any of them does not hold.
+// The design is docs/specs/2026-10-14-operators-and-management.md in the
+// paisans CLI's repository.
 //
 //	operator-reconciler               run: a pass now, then one every two hours
 //	operator-reconciler healthcheck   exit 0 if the running reconciler is alive (/livez)
@@ -17,7 +19,7 @@
 //	PAISANS_MANAGEMENT            paisans or pocket-id
 //
 // and, when the deployment checks its DNS provider's account
-// (docs/specs/2026-10-13-dns-admin-continuity.md), all of:
+// (docs/specs/2026-10-13-dns-admin-continuity.md in the same repository), all of:
 //
 //	PAISANS_DNS_MEMBERS_TOKEN   a Cloudflare token that reads the account's members
 //	PAISANS_DNS_DOMAIN          the community domain, whose zone's account is checked
@@ -38,8 +40,8 @@ import (
 
 	"github.com/paisans-software/pocketid-go"
 
-	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
-	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
+	"github.com/paisans-software/paisans-operator-reconciler-service/internal/dnscontinuity"
+	"github.com/paisans-software/paisans-operator-reconciler-service/internal/operatorreconciler"
 )
 
 const (

@@ -23,7 +23,7 @@ import (
 
 	"github.com/paisans-software/pocketid-go"
 
-	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
+	"github.com/paisans-software/paisans-operator-reconciler-service/internal/dnscontinuity"
 )
 
 const (

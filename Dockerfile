@@ -1,12 +1,11 @@
-# The operator reconciler's image: one static binary on distroless, no shell. Built by
-# .github/workflows/operator-reconciler-image.yml from the repository root, so the
-# build context holds the whole module.
+# The operator reconciler's image: one static binary on distroless, no shell.
+# Built by .github/workflows/release.yml from the repository root.
 FROM golang:1.25 AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /operator-reconciler ./cmd/operator-reconciler
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /operator-reconciler .
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=build /operator-reconciler /operator-reconciler
