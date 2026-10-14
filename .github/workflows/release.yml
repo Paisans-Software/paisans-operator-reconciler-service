@@ -1,8 +1,8 @@
 # Builds and publishes ghcr.io/paisans-software/admin-reconciler.
 #
 # A tag admin-reconciler-vX.Y.Z publishes X.Y.Z; a push to develop publishes
-# develop and sha-<short>. The pocket-id kind pins a published image by
-# digest in internal/kinds, so nothing a deployment runs moves when this
+# develop and sha-<short>. The pocket-id blueprint pins a published image by
+# digest in internal/blueprints, so nothing a deployment runs moves when this
 # workflow runs again.
 name: admin-reconciler image
 

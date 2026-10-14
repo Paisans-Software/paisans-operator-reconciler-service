@@ -1,10 +1,10 @@
 //go:build pocketid_integration
 
 // This file runs one reconciler pass against a real ghcr.io/pocket-id/pocket-id
-// container, the version the pocket-id kind pins, so what the reconciler assumes
-// about the API (the list carries each user's groups, the static key's user is
-// an administrator with a fixed ID, and the user-groups route replaces a
-// user's set) is checked against Pocket ID rather than against the fake.
+// container, the version the pocket-id blueprint pins, so what the reconciler
+// assumes about the API (the list carries each user's groups, the static key's
+// user is an administrator with a fixed ID, and the user-groups route replaces
+// a user's set) is checked against Pocket ID rather than against the fake.
 //
 //	go test -tags pocketid_integration ./internal/adminreconciler/
 package adminreconciler_test
@@ -18,8 +18,8 @@ import (
 	"time"
 
 	"github.com/paisans-software/paisans-stack/internal/adminreconciler"
+	"github.com/paisans-software/paisans-stack/internal/blueprints"
 	"github.com/paisans-software/paisans-stack/internal/config"
-	"github.com/paisans-software/paisans-stack/internal/kinds"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
@@ -28,9 +28,9 @@ func startPocketID(t *testing.T) *pocketid.Client {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker is not on PATH; skipping the Pocket ID integration test")
 	}
-	image, ok := kinds.DefaultImage(config.KindPocketID, "app")
+	image, ok := blueprints.DefaultImage(config.BlueprintPocketID, "app")
 	if !ok {
-		t.Fatal("the pocket-id kind names no app image")
+		t.Fatal("the pocket-id blueprint names no app image")
 	}
 	name := fmt.Sprintf("paisans-reconciler-it-%d", time.Now().UnixNano())
 	out, err := exec.Command("docker", "run", "-d", "--name", name, "-p", "127.0.0.1::1411",

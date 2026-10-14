@@ -1,6 +1,6 @@
-// Command admin-reconciler runs beside Pocket ID in the pocket-id kind's stack. It
-// keeps Pocket ID's administrators in the admins group and serves /healthz,
-// which fails while that group has fewer than two members. See
+// Command admin-reconciler runs beside Pocket ID in the pocket-id blueprint's
+// stack. It keeps Pocket ID's administrators in the admins group and serves
+// /healthz, which fails while that group has fewer than two members. See
 // docs/specs/2026-10-08-admin-reconciler.md.
 //
 //	admin-reconciler               run: a pass now, then one every two hours
@@ -37,8 +37,8 @@ import (
 
 const (
 	listen = ":1412"
-	// standbyMarker is written by the pocket-id kind's standby wrapper into a
-	// directory both containers mount.
+	// standbyMarker is written by the pocket-id blueprint's standby wrapper
+	// into a directory both containers mount.
 	standbyMarker = "/paisans/run/standby"
 )
 
@@ -55,7 +55,7 @@ func run() error {
 	key := os.Getenv("STATIC_API_KEY")
 	base := os.Getenv("PAISANS_RECONCILER_POCKET_ID")
 	if key == "" || base == "" {
-		return errors.New("STATIC_API_KEY and PAISANS_RECONCILER_POCKET_ID must both be set; the pocket-id kind's .env renders them")
+		return errors.New("STATIC_API_KEY and PAISANS_RECONCILER_POCKET_ID must both be set; the pocket-id blueprint's .env renders them")
 	}
 	g := &adminreconciler.Reconciler{
 		API:     &pocketid.Client{HTTP: &http.Client{Timeout: 30 * time.Second}, BaseURL: base, APIKey: key},
@@ -115,7 +115,7 @@ func dnsCheck() (*adminreconciler.DNS, error) {
 	domain := os.Getenv("PAISANS_DNS_DOMAIN")
 	key, err := hex.DecodeString(os.Getenv("PAISANS_DNS_EMAIL_HASH_KEY"))
 	if domain == "" || err != nil || len(key) < 32 {
-		return nil, errors.New("PAISANS_DNS_MEMBERS_TOKEN is set, so PAISANS_DNS_DOMAIN and PAISANS_DNS_EMAIL_HASH_KEY, at least 32 bytes as hex, must be too; the pocket-id kind's .env renders all three")
+		return nil, errors.New("PAISANS_DNS_MEMBERS_TOKEN is set, so PAISANS_DNS_DOMAIN and PAISANS_DNS_EMAIL_HASH_KEY, at least 32 bytes as hex, must be too; the pocket-id blueprint's .env renders all three")
 	}
 	mapping, err := dnscontinuity.ParseMap(os.Getenv("PAISANS_DNS_EMAIL_MAP"))
 	if err != nil {
