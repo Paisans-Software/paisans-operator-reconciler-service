@@ -60,3 +60,8 @@ other follows.
 ## Licence
 
 AGPL-3.0-or-later. The full text is in `LICENSE`.
+
+The binary links the Go standard library and `pocketid-go` under their own
+licenses. `scripts/third-party-notices.sh` prints those licenses and notices
+for the packages a binary is built from, and the image carries its output as
+`/THIRD_PARTY_NOTICES`, beside `/LICENSE`.
