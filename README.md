@@ -12,8 +12,8 @@ whether the deployment's operators are who its configuration says:
 
 A pass runs at start and every two hours. The design is
 `docs/specs/2026-10-14-operators-and-management.md` and
-`docs/specs/2026-10-13-dns-admin-continuity.md` in the paisans CLI's
-repository, `Paisans-Software/paisans-stack`, whose pocket-id blueprint
+`docs/specs/2026-10-13-dns-admin-continuity.md` in the Paisans
+repository, `Paisans-Software/paisans-cli`, whose pocket-id blueprint
 renders this service and its environment.
 
 ## Image
@@ -49,11 +49,12 @@ go test -tags pocketid_integration ./internal/operatorreconciler/    # needs doc
 The integration test runs passes against a real Pocket ID container;
 `POCKETID_IMAGE` names another release to run against.
 
-## Contract with the paisans CLI
+## Contract with Paisans
 
 The group `operators` and the management values `paisans` and `pocket-id`
-are shared with the CLI's pocket-id blueprint. Each repository's tests pin
-the three values, so a change on one side fails that side's tests until the
+are shared with the pocket-id blueprint in `Paisans-Software/paisans-cli`.
+Each repository's tests pin the three values, so a change on one side fails
+that side's tests until the
 other follows.
 
 ## Licence

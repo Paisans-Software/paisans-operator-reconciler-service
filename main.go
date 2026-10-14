@@ -5,7 +5,7 @@
 // Pocket ID administrator is an operator, with none under management:
 // paisans, and serves /healthz, which fails while any of them does not hold.
 // The design is docs/specs/2026-10-14-operators-and-management.md in the
-// paisans CLI's repository.
+// Paisans repository, Paisans-Software/paisans-cli.
 //
 //	operator-reconciler               run: a pass now, then one every two hours
 //	operator-reconciler healthcheck   exit 0 if the running reconciler is alive (/livez)
