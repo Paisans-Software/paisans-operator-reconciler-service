@@ -119,6 +119,21 @@ func TestRealPocketIDIsCheckedAndNotWritten(t *testing.T) {
 	if r := pass("pocket-id"); r.Healthy || !strings.Contains(r.Message, "operator bob is not in operators") {
 		t.Fatalf("bob outside operators: %+v", r)
 	}
+	// carol holds operators and is not one, so check 3 names her: the real
+	// user list carries the groups that check reads.
+	if err := c.SetUserGroups(bob.ID, groups); err != nil {
+		t.Fatal(err)
+	}
+	carol, err := c.CreateUser(pocketid.NewUser{Username: "carol", Email: ptr("carol@example.org"), FirstName: "Carol", DisplayName: "Carol"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.SetUserGroups(carol.ID, groups); err != nil {
+		t.Fatal(err)
+	}
+	if r := pass("pocket-id"); r.Healthy || !strings.Contains(r.Message, "carol is in operators and not an operator") {
+		t.Fatalf("carol in operators: %+v", r)
+	}
 }
 
 func ptr(s string) *string { return &s }

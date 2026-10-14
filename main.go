@@ -1,9 +1,9 @@
 // Command operator-reconciler runs beside Pocket ID in the pocket-id
 // blueprint's stack. It reads Pocket ID and writes nothing: it checks that
 // every operator is an enabled member in the member group and in operators,
-// and that every Pocket ID administrator is an operator, with none under
-// management: paisans, and serves /healthz, which fails while either does not
-// hold. See docs/specs/2026-10-14-operators-and-management.md.
+// that every enabled member of operators is an operator, and that every
+// Pocket ID administrator is an operator, with none under management:
+// paisans, and serves /healthz, which fails while any of them does not hold. See docs/specs/2026-10-14-operators-and-management.md.
 //
 //	operator-reconciler               run: a pass now, then one every two hours
 //	operator-reconciler healthcheck   exit 0 if the running reconciler is alive (/livez)

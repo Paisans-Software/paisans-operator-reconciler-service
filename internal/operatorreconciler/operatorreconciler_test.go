@@ -193,6 +193,12 @@ func TestThePassChecksOperatorsAndAdministrators(t *testing.T) {
 		{"a member administrator under pocket-id", "pocket-id", func(f *fakePocketID) { f.users[2].IsAdmin = true }, "carol is a pocket id administrator and not an operator"},
 		{"a member administrator under paisans", "paisans", func(f *fakePocketID) { f.users[2].IsAdmin = true }, "carol is a pocket id administrator, and under management paisans nobody is"},
 		{"a disabled administrator", "paisans", func(f *fakePocketID) { f.users[2].IsAdmin, f.users[2].Disabled = true, true }, ""},
+		// 3. Every enabled member of operators is an operator: an operator
+		// taken out of the yaml who still holds the group is named.
+		{"a member in operators", "paisans", func(f *fakePocketID) { f.users[2].Groups = []string{"gM", "gO"} }, "carol is in operators and not an operator"},
+		{"a member in operators under pocket-id", "pocket-id", func(f *fakePocketID) { f.users[2].Groups = []string{"gO"} }, "carol is in operators and not an operator"},
+		{"a disabled user in operators", "paisans", func(f *fakePocketID) { f.users[2].Groups, f.users[2].Disabled = []string{"gM", "gO"}, true }, ""},
+		{"the static key's user in operators", "paisans", func(f *fakePocketID) { f.users[3].Groups = []string{"gO"} }, ""},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -227,6 +233,23 @@ func TestAHealthyPassNamesTheOperators(t *testing.T) {
 	f.users[0].IsAdmin, f.users[1].IsAdmin = true, true
 	g, _, _ = reconcilerFor(t, f, false, "pocket-id")
 	if r := g.Pass(); r.Message != "2 operators, each a member (alice, bob); pocket id administrators: alice, bob" {
+		t.Errorf("message %q", r.Message)
+	}
+}
+
+// Two users in operators who are not operators are each named, in order, and
+// with no operators group the pass says so once rather than per user.
+func TestTheOperatorsGroupHoldsOnlyOperators(t *testing.T) {
+	f := healthyFake().add(fakeUser{ID: "d", Username: "dave", Groups: []string{"gO"}})
+	f.users[2].Groups = []string{"gM", "gO"}
+	g, _, _ := reconcilerFor(t, f, false, "paisans")
+	if r := g.Pass(); r.Message != "carol is in operators and not an operator; dave is in operators and not an operator" {
+		t.Errorf("message %q", r.Message)
+	}
+	f = healthyFake()
+	delete(f.groups, "gO")
+	g, _, _ = reconcilerFor(t, f, false, "paisans")
+	if r := g.Pass(); r.Message != "no group named operators" {
 		t.Errorf("message %q", r.Message)
 	}
 }

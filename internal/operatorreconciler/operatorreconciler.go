@@ -4,9 +4,9 @@
 // See docs/specs/2026-10-14-operators-and-management.md. Pocket ID is the
 // record of who is a member of the community; the operators section is the
 // record of who runs the machines. A pass holds the two to each other: every
-// operator is an enabled member in the member group and in operators, and
-// every Pocket ID administrator is an operator, with none at all under
-// management: paisans. The API key it holds can do anything, so the
+// operator is an enabled member in the member group and in operators, every
+// enabled member of operators is an operator, and every Pocket ID
+// administrator is an operator, with none at all under management: paisans. The API key it holds can do anything, so the
 // narrowness lives here: its only requests are the GETs in PocketID, and the
 // tests fail on any other method.
 package operatorreconciler
@@ -246,7 +246,7 @@ func (g *Reconciler) sortedOperators() []string {
 	return out
 }
 
-// pass reads Pocket ID once and holds it to the two checks. A group that
+// pass reads Pocket ID once and holds it to the three checks. A group that
 // does not exist is a failure of its own rather than one per operator.
 func (g *Reconciler) pass() Result {
 	if g.Standby() {
@@ -300,6 +300,24 @@ func (g *Reconciler) pass() Result {
 		}
 		if len(outside) > 0 {
 			failures = append(failures, "operator "+name+" is not in "+strings.Join(outside, " or "))
+		}
+	}
+
+	// 3, read here beside 1. Every enabled member of operators is an
+	// operator. An operator taken out of the yaml keeps the group until
+	// someone removes it at Pocket ID, and every app that reads operators
+	// for operator access would still grant it, so the pass names them. A
+	// missing group is reported once above, not once per user.
+	if grp := groups[OperatorsGroup]; grp != nil {
+		var extra []string
+		for _, u := range users {
+			if counts(u) && u.InGroup(grp.ID) && !slices.Contains(operators, u.Username) {
+				extra = append(extra, u.Username)
+			}
+		}
+		sort.Strings(extra)
+		for _, name := range extra {
+			failures = append(failures, name+" is in operators and not an operator")
 		}
 	}
 
