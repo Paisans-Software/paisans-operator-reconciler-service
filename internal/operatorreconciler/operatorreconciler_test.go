@@ -13,8 +13,7 @@ import (
 
 	"github.com/paisans-software/pocketid-go"
 
-	"github.com/paisans-software/paisans-stack/internal/blueprints"
-	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
+	"github.com/paisans-software/paisans-operator-reconciler-service/internal/operatorreconciler"
 )
 
 const key = "static-key-0123456789"
@@ -162,13 +161,15 @@ func healthyFake() *fakePocketID {
 		add(fakeUser{ID: operatorreconciler.SyntheticUserID, Username: "static-api-user", IsAdmin: true})
 }
 
-// The reconciler's group is the one apply puts operators in.
-func TestTheOperatorsGroupIsTheBlueprintsOne(t *testing.T) {
-	if operatorreconciler.OperatorsGroup != blueprints.OperatorsGroup {
-		t.Errorf("%q, blueprints say %q", operatorreconciler.OperatorsGroup, blueprints.OperatorsGroup)
+// The group and management values are a contract with the paisans CLI's
+// pocket-id blueprint, which states the same three; each side pins them, so
+// either side changing one fails its own tests.
+func TestTheContractValues(t *testing.T) {
+	if operatorreconciler.OperatorsGroup != "operators" {
+		t.Errorf("OperatorsGroup is %q", operatorreconciler.OperatorsGroup)
 	}
-	if operatorreconciler.ManagementPaisans != blueprints.ManagementPaisans || operatorreconciler.ManagementPocketID != blueprints.ManagementPocketID {
-		t.Error("the management values differ from the blueprints'")
+	if operatorreconciler.ManagementPaisans != "paisans" || operatorreconciler.ManagementPocketID != "pocket-id" {
+		t.Errorf("management values are %q and %q", operatorreconciler.ManagementPaisans, operatorreconciler.ManagementPocketID)
 	}
 }
 

@@ -1,0 +1,16 @@
+# The reconciler's passes against a real Pocket ID. POCKETID_IMAGE is unset,
+# so the test runs the release it names as its default.
+name: integration
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -tags pocketid_integration -count=1 -v ./internal/operatorreconciler/
