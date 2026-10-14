@@ -161,7 +161,7 @@ func healthyFake() *fakePocketID {
 		add(fakeUser{ID: operatorreconciler.SyntheticUserID, Username: "static-api-user", IsAdmin: true})
 }
 
-// The group and management values are a contract with the paisans CLI's
+// The group and management values are a contract with the Paisans toolkit's
 // pocket-id blueprint, which states the same three; each side pins them, so
 // either side changing one fails its own tests.
 func TestTheContractValues(t *testing.T) {
