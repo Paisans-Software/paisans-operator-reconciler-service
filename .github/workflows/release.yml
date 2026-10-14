@@ -1,24 +1,15 @@
-# Builds and publishes ghcr.io/paisans-software/admin-reconciler.
+# Builds and publishes ghcr.io/paisans-software/operator-reconciler.
 #
-# A tag admin-reconciler-vX.Y.Z publishes X.Y.Z; a push to develop publishes
-# develop and sha-<short>. The pocket-id blueprint pins a published image by
-# digest in internal/blueprints, so nothing a deployment runs moves when this
-# workflow runs again.
-name: admin-reconciler image
+# Only a tag operator-reconciler-vX.Y.Z publishes, as X.Y.Z; a push to a
+# branch, develop included, publishes nothing. Founder rule: an image is
+# published when someone tags it, never as a side effect of a merge. The core
+# catalog's foundation.yaml names the track the pocket-id blueprint runs, so a
+# deployment moves to a new image only when the catalog's track admits it.
+name: operator-reconciler image
 
 on:
   push:
-    branches: [develop]
-    tags: ["admin-reconciler-v*"]
-    paths:
-      - "cmd/admin-reconciler/**"
-      - "internal/adminreconciler/**"
-      - "internal/dnscontinuity/**"
-      - "internal/pocketid/**"
-      - "go.mod"
-      - "go.sum"
-      - ".github/workflows/admin-reconciler-image.yml"
-  workflow_dispatch:
+    tags: ["operator-reconciler-v*"]
 
 permissions:
   contents: read
@@ -33,7 +24,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Test
-        run: go test ./internal/adminreconciler/ ./internal/dnscontinuity/ ./internal/pocketid/ ./cmd/admin-reconciler/
+        run: go test ./internal/operatorreconciler/ ./internal/dnscontinuity/ ./internal/pocketid/ ./cmd/operator-reconciler/
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
@@ -44,15 +35,13 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/paisans-software/admin-reconciler
+          images: ghcr.io/paisans-software/operator-reconciler
           tags: |
-            type=match,pattern=admin-reconciler-v(.*),group=1
-            type=ref,event=branch
-            type=sha
+            type=match,pattern=operator-reconciler-v(.*),group=1
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: cmd/admin-reconciler/Dockerfile
+          file: cmd/operator-reconciler/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

@@ -1,11 +1,11 @@
-// Package dnscontinuity checks that every Pocket ID administrator is a Super
+// Package dnscontinuity checks that every operator is a Super
 // Administrator of every Cloudflare account holding the deployment's zone or
 // a zone above it, and that each of them has two-factor authentication on.
 //
 // See docs/specs/2026-10-13-dns-admin-continuity.md. It reads Cloudflare and
 // never writes there: its only requests are the two GETs in Client, and the
 // tests fail on any other. Its results name nobody. They are counts, because
-// they are pushed to the health page; the log names the administrators who
+// they are pushed to the health page; the log names the operators who
 // fail by Pocket ID username, and nothing here ever prints an email address.
 package dnscontinuity
 
@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	// Minimum is the fewest administrators who must be Super Administrators,
-	// the admin reconciler's own threshold: one is a single loss from none.
+	// Minimum is the fewest operators who must be Super Administrators,
+	// validate's floor of operators: one is a single loss from none.
 	Minimum = 2
 	// SuperAdministrator is the role, and the permission group, that can
 	// manage an account's members ("Can edit any Cloudflare setting, make
@@ -312,7 +312,8 @@ func hexHash(s string) bool {
 	return err == nil && strings.ToLower(s) == s
 }
 
-// Admin is one Pocket ID administrator the check holds to the rule.
+// Admin is one operator the check holds to the rule, by their Pocket ID
+// username and address.
 type Admin struct {
 	Username string
 	// Email is the Pocket ID email, empty when the user has none.
@@ -337,13 +338,13 @@ func Failed(reason string) Result {
 	return Result{SuperAdmins: c, TwoFA: c}
 }
 
-// Evaluate holds every administrator to the rule against the members of
-// every account read: an administrator counts only as a Super Administrator
+// Evaluate holds every operator to the rule against the members of
+// every account read: an operator counts only as a Super Administrator
 // of each of them, and with two-factor authentication on in each. Mapping is
-// keyed and valued by hash: an administrator whose Pocket ID email's hash is
+// keyed and valued by hash: an operator whose Pocket ID email's hash is
 // mapped is expected at the mapped hash, and otherwise at their own. Members
-// who match no administrator are not counted. log receives one line per
-// failing administrator, by username.
+// who match no operator are not counted. log receives one line per
+// failing operator, by username.
 func Evaluate(admins []Admin, accounts [][]Member, h Hasher, mapping map[string]string, log func(string, ...any)) Result {
 	type state struct{ super, pending, twoFA bool }
 	perAccount := make([]map[string]state, 0, len(accounts))
@@ -410,20 +411,20 @@ func Evaluate(admins []Admin, accounts [][]Member, h Hasher, mapping map[string]
 	var r Result
 	switch {
 	case failing > 0:
-		msg := fmt.Sprintf("%d of %d admins not cloudflare super admin", failing, n)
+		msg := fmt.Sprintf("%d of %d operators not cloudflare super admin", failing, n)
 		if pending > 0 {
 			msg += fmt.Sprintf(" (%d pending)", pending)
 		}
 		r.SuperAdmins = Check{Message: msg}
 	case matched < Minimum:
-		r.SuperAdmins = Check{Message: fmt.Sprintf("%d of %d admins are cloudflare super admins; at least %d are needed", matched, n, Minimum)}
+		r.SuperAdmins = Check{Message: fmt.Sprintf("%d of %d operators are cloudflare super admins; at least %d are needed", matched, n, Minimum)}
 	default:
-		r.SuperAdmins = Check{Healthy: true, Message: fmt.Sprintf("%d of %d admins are cloudflare super admins", matched, n)}
+		r.SuperAdmins = Check{Healthy: true, Message: fmt.Sprintf("%d of %d operators are cloudflare super admins", matched, n)}
 	}
 	if twoFAOff > 0 {
-		r.TwoFA = Check{Message: fmt.Sprintf("%d of %d admins have 2fa off", twoFAOff, matched)}
+		r.TwoFA = Check{Message: fmt.Sprintf("%d of %d operators have 2fa off", twoFAOff, matched)}
 	} else {
-		r.TwoFA = Check{Healthy: true, Message: fmt.Sprintf("%d of %d admins have 2fa on", matched, matched)}
+		r.TwoFA = Check{Healthy: true, Message: fmt.Sprintf("%d of %d operators have 2fa on", matched, matched)}
 	}
 	return r
 }

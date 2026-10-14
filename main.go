@@ -1,15 +1,20 @@
-// Command admin-reconciler runs beside Pocket ID in the pocket-id blueprint's
-// stack. It keeps Pocket ID's administrators in the admins group and serves
-// /healthz, which fails while that group has fewer than two members. See
-// docs/specs/2026-10-08-admin-reconciler.md.
+// Command operator-reconciler runs beside Pocket ID in the pocket-id
+// blueprint's stack. It reads Pocket ID and writes nothing: it checks that
+// every operator is an enabled member in the member group and in operators,
+// and that every Pocket ID administrator is an operator, with none under
+// management: paisans, and serves /healthz, which fails while either does not
+// hold. See docs/specs/2026-10-14-operators-and-management.md.
 //
-//	admin-reconciler               run: a pass now, then one every two hours
-//	admin-reconciler healthcheck   exit 0 if the running reconciler is alive (/livez)
+//	operator-reconciler               run: a pass now, then one every two hours
+//	operator-reconciler healthcheck   exit 0 if the running reconciler is alive (/livez)
 //
 // It reads its environment from the stack's .env:
 //
-//	STATIC_API_KEY             Pocket ID's static API key
-//	PAISANS_RECONCILER_POCKET_ID    Pocket ID's address on the stack's network
+//	STATIC_API_KEY                Pocket ID's static API key
+//	PAISANS_RECONCILER_POCKET_ID  Pocket ID's address on the stack's network
+//	PAISANS_OPERATORS             the operators' usernames, comma separated
+//	PAISANS_MEMBER_GROUP          the community's member group
+//	PAISANS_MANAGEMENT            paisans or pocket-id
 //
 // and, when the deployment checks its DNS provider's account
 // (docs/specs/2026-10-13-dns-admin-continuity.md), all of:
@@ -17,7 +22,7 @@
 //	PAISANS_DNS_MEMBERS_TOKEN   a Cloudflare token that reads the account's members
 //	PAISANS_DNS_DOMAIN          the community domain, whose zone's account is checked
 //	PAISANS_DNS_EMAIL_HASH_KEY  the key every address is hashed under, hex
-//	PAISANS_DNS_EMAIL_MAP       hashed pairs for admins whose address differs
+//	PAISANS_DNS_EMAIL_MAP       hashed pairs for operators whose address differs
 package main
 
 import (
@@ -28,10 +33,11 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/paisans-software/paisans-stack/internal/adminreconciler"
 	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
+	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
@@ -57,11 +63,18 @@ func run() error {
 	if key == "" || base == "" {
 		return errors.New("STATIC_API_KEY and PAISANS_RECONCILER_POCKET_ID must both be set; the pocket-id blueprint's .env renders them")
 	}
-	g := &adminreconciler.Reconciler{
-		API:     &pocketid.Client{HTTP: &http.Client{Timeout: 30 * time.Second}, BaseURL: base, APIKey: key},
-		Standby: standby,
-		Now:     time.Now,
-		Log:     log.Printf,
+	operators, memberGroup, management, err := checked(os.Getenv)
+	if err != nil {
+		return err
+	}
+	g := &operatorreconciler.Reconciler{
+		API:         &pocketid.Client{HTTP: &http.Client{Timeout: 30 * time.Second}, BaseURL: base, APIKey: key},
+		Operators:   operators,
+		MemberGroup: memberGroup,
+		Management:  management,
+		Standby:     standby,
+		Now:         time.Now,
+		Log:         log.Printf,
 	}
 	dns, err := dnsCheck()
 	if err != nil {
@@ -81,9 +94,9 @@ func run() error {
 		fmt.Fprintln(w, body)
 	})
 	if g.DNS != nil {
-		for path, which := range map[string]adminreconciler.DNSPath{
-			"GET /healthz/dns-super-admins": adminreconciler.DNSSuperAdmins,
-			"GET /healthz/dns-2fa":          adminreconciler.DNSTwoFA,
+		for path, which := range map[string]operatorreconciler.DNSPath{
+			"GET /healthz/dns-super-admins": operatorreconciler.DNSSuperAdmins,
+			"GET /healthz/dns-2fa":          operatorreconciler.DNSTwoFA,
 		} {
 			mux.HandleFunc(path, func(w http.ResponseWriter, _ *http.Request) {
 				code, body := g.DNSStatus(which)
@@ -93,7 +106,7 @@ func run() error {
 			})
 		}
 	}
-	// Docker's healthcheck: alive, whatever admins holds. See Reconciler.Live.
+	// Docker's healthcheck: alive, whatever the checks found. See Reconciler.Live.
 	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
 		if !g.Live() {
 			http.Error(w, "stale", http.StatusServiceUnavailable)
@@ -105,9 +118,29 @@ func run() error {
 	return srv.ListenAndServe()
 }
 
+// checked reads the three variables that say what a pass checks, and refuses
+// to start without them: a reconciler that knew no operators would report a
+// deployment healthy that it had not checked.
+func checked(getenv func(string) string) (operators []string, memberGroup, management string, err error) {
+	for _, name := range strings.Split(getenv("PAISANS_OPERATORS"), ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			operators = append(operators, name)
+		}
+	}
+	memberGroup = strings.TrimSpace(getenv("PAISANS_MEMBER_GROUP"))
+	management = strings.TrimSpace(getenv("PAISANS_MANAGEMENT"))
+	if len(operators) == 0 || memberGroup == "" {
+		return nil, "", "", errors.New("PAISANS_OPERATORS and PAISANS_MEMBER_GROUP must both be set; the pocket-id blueprint's .env renders them")
+	}
+	if management != operatorreconciler.ManagementPaisans && management != operatorreconciler.ManagementPocketID {
+		return nil, "", "", fmt.Errorf("PAISANS_MANAGEMENT is %q, and must be %s or %s; the pocket-id blueprint's .env renders it", management, operatorreconciler.ManagementPaisans, operatorreconciler.ManagementPocketID)
+	}
+	return operators, memberGroup, management, nil
+}
+
 // dnsCheck is the DNS continuity check the environment describes, nil when it
 // names no members token: a deployment without one renders none of the four.
-func dnsCheck() (*adminreconciler.DNS, error) {
+func dnsCheck() (*operatorreconciler.DNS, error) {
 	token := os.Getenv("PAISANS_DNS_MEMBERS_TOKEN")
 	if token == "" {
 		return nil, nil
@@ -121,7 +154,7 @@ func dnsCheck() (*adminreconciler.DNS, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &adminreconciler.DNS{
+	return &operatorreconciler.DNS{
 		Members: &dnscontinuity.Client{Token: token, Domain: domain, HTTP: &http.Client{Timeout: 30 * time.Second}},
 		Hasher:  dnscontinuity.Hasher{Key: key},
 		Map:     mapping,
@@ -134,8 +167,9 @@ func standby() bool {
 }
 
 // healthcheck is Docker's healthcheck: the image has no shell or curl, so the
-// binary asks itself. It asks /livez, not /healthz: a deployment whose admins
-// group is short is alive, and the uptime monitor is what reports it.
+// binary asks itself. It asks /livez, not /healthz: a deployment whose
+// operators do not check out is alive, and the uptime monitor is what reports
+// it.
 func healthcheck(url string) int {
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Get(url)

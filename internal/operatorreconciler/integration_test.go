@@ -1,25 +1,26 @@
 //go:build pocketid_integration
 
-// This file runs one reconciler pass against a real ghcr.io/pocket-id/pocket-id
+// This file runs reconciler passes against a real ghcr.io/pocket-id/pocket-id
 // container, the version the pocket-id blueprint pins, so what the reconciler
-// assumes about the API (the list carries each user's groups, the static key's
-// user is an administrator with a fixed ID, and the user-groups route replaces
-// a user's set) is checked against Pocket ID rather than against the fake.
+// assumes about the API (the list carries each user's groups and flags, and
+// the static key's user is an administrator with a fixed ID) is checked
+// against Pocket ID rather than against the fake.
 //
-//	go test -tags pocketid_integration ./internal/adminreconciler/
-package adminreconciler_test
+//	go test -tags pocketid_integration ./internal/operatorreconciler/
+package operatorreconciler_test
 
 import (
 	"fmt"
 	"net/http"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/paisans-software/paisans-stack/internal/adminreconciler"
 	"github.com/paisans-software/paisans-stack/internal/blueprints"
 	"github.com/paisans-software/paisans-stack/internal/config"
+	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
 	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
@@ -28,7 +29,13 @@ func startPocketID(t *testing.T) *pocketid.Client {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker is not on PATH; skipping the Pocket ID integration test")
 	}
-	image, ok := blueprints.DefaultImage(config.BlueprintPocketID, "app")
+	// The foundation names a track, which docker cannot run; set
+	// PAISANS_POCKET_ID_IMAGE to a tag on it, as the render package's
+	// standby test takes PAISANS_STANDBY_IMAGE.
+	image, ok := os.Getenv("PAISANS_POCKET_ID_IMAGE"), true
+	if image == "" {
+		image, ok = blueprints.DefaultImage(config.BlueprintPocketID, "app")
+	}
 	if !ok {
 		t.Fatal("the pocket-id blueprint names no app image")
 	}
@@ -63,66 +70,54 @@ func startPocketID(t *testing.T) *pocketid.Client {
 	return &pocketid.Client{HTTP: &http.Client{}, BaseURL: base, APIKey: key}
 }
 
-func TestRealPocketIDAdministratorIsAdded(t *testing.T) {
+func TestRealPocketIDIsCheckedAndNotWritten(t *testing.T) {
 	c := startPocketID(t)
-	admins, err := c.CreateGroup("admins")
-	if err != nil {
-		t.Fatal(err)
-	}
-	editors, err := c.CreateGroup("editors")
-	if err != nil {
-		t.Fatal(err)
+	var groups []string
+	for _, name := range []string{"members", "operators"} {
+		g, err := c.CreateGroup(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		groups = append(groups, g.ID)
 	}
 	alice, err := c.CreateUser(pocketid.NewUser{Username: "alice", Email: ptr("alice@example.org"), FirstName: "Alice", DisplayName: "Alice", IsAdmin: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	bob, err := c.CreateUser(pocketid.NewUser{Username: "bob", Email: ptr("bob@example.org"), FirstName: "Bob", DisplayName: "Bob", IsAdmin: true})
+	bob, err := c.CreateUser(pocketid.NewUser{Username: "bob", Email: ptr("bob@example.org"), FirstName: "Bob", DisplayName: "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.SetUserGroups(alice.ID, []string{admins.ID}); err != nil {
-		t.Fatal(err)
+	for _, id := range []string{alice.ID, bob.ID} {
+		if err := c.SetUserGroups(id, groups); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := c.SetUserGroups(bob.ID, []string{editors.ID}); err != nil {
-		t.Fatal(err)
+	pass := func(management string) operatorreconciler.Result {
+		g := &operatorreconciler.Reconciler{API: c, Operators: []string{"alice", "bob"}, MemberGroup: "members",
+			Management: management, Standby: func() bool { return false }, Now: time.Now, Log: t.Logf}
+		return g.Pass()
 	}
-
-	g := &adminreconciler.Reconciler{API: c, Standby: func() bool { return false }, Now: time.Now, Log: t.Logf}
-	r := g.Pass()
-	if !r.Healthy || !strings.Contains(r.Message, "2 members (alice, bob)") {
-		t.Fatalf("pass: %+v", r)
+	// The static key's user is an administrator and never counts.
+	if r := pass("pocket-id"); !r.Healthy || !strings.Contains(r.Message, "pocket id administrators: alice") {
+		t.Fatalf("pocket-id: %+v", r)
 	}
-
+	if r := pass("paisans"); r.Healthy || !strings.Contains(r.Message, "alice is a pocket id administrator") {
+		t.Fatalf("paisans: %+v", r)
+	}
 	got, err := c.User(bob.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.InGroup(admins.ID) || !got.InGroup(editors.ID) {
-		t.Errorf("bob's groups after the pass: %+v, want admins and editors", got.UserGroups)
+	if got.IsAdmin || len(got.UserGroups) != 2 {
+		t.Errorf("bob changed: %+v", got)
 	}
-	synthetic, err := c.User(adminreconciler.SyntheticUserID)
-	if err != nil {
+	// Taken out of operators, bob fails check 1.
+	if err := c.SetUserGroups(bob.ID, groups[:1]); err != nil {
 		t.Fatal(err)
 	}
-	if !synthetic.IsAdmin || synthetic.InGroup(admins.ID) {
-		t.Errorf("the static key's user: admin %v, in admins %v; want an administrator left out", synthetic.IsAdmin, synthetic.InGroup(admins.ID))
-	}
-
-	// Demoted, bob is removed on the next pass, keeping editors.
-	if err := c.Demote(got); err != nil {
-		t.Fatal(err)
-	}
-	r = g.Pass()
-	if r.Healthy || !strings.Contains(r.Message, "1 member (alice)") {
-		t.Fatalf("pass after demotion: %+v", r)
-	}
-	got, err = c.User(bob.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.InGroup(admins.ID) || !got.InGroup(editors.ID) {
-		t.Errorf("bob's groups after demotion: %+v, want editors only", got.UserGroups)
+	if r := pass("pocket-id"); r.Healthy || !strings.Contains(r.Message, "operator bob is not in operators") {
+		t.Fatalf("bob outside operators: %+v", r)
 	}
 }
 

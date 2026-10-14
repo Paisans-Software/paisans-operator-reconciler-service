@@ -195,7 +195,7 @@ func TestEverySuperAdministratorPasses(t *testing.T) {
 		member("Bob@Example.org ", "accepted", true, "", "allow"),
 		member("extra@example.org", "accepted", false, "Administrator", ""),
 	}, nil)
-	if !r.SuperAdmins.Healthy || r.SuperAdmins.Message != "2 of 2 admins are cloudflare super admins" {
+	if !r.SuperAdmins.Healthy || r.SuperAdmins.Message != "2 of 2 operators are cloudflare super admins" {
 		t.Errorf("super admins = %+v", r.SuperAdmins)
 	}
 	if !r.TwoFA.Healthy {
@@ -209,7 +209,7 @@ func TestAnAdministratorIsNotEnough(t *testing.T) {
 		member("bob@example.org", "accepted", true, SuperAdministrator, ""),
 		member("carol@example.org", "accepted", true, "Administrator", ""),
 	}, nil)
-	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 3 admins not cloudflare super admin" {
+	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 3 operators not cloudflare super admin" {
 		t.Errorf("super admins = %+v", r.SuperAdmins)
 	}
 	if len(lines) != 1 || !strings.Contains(lines[0], "carol") {
@@ -223,7 +223,7 @@ func TestPendingAndDeniedDoNotCount(t *testing.T) {
 		member("bob@example.org", "pending", true, SuperAdministrator, ""),
 		member("carol@example.org", "accepted", true, "", "deny"),
 	}, nil)
-	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "2 of 3 admins not cloudflare super admin (1 pending)" {
+	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "2 of 3 operators not cloudflare super admin (1 pending)" {
 		t.Errorf("super admins = %+v", r.SuperAdmins)
 	}
 }
@@ -232,7 +232,7 @@ func TestOneSuperAdministratorIsBelowTheFloor(t *testing.T) {
 	r, _ := evaluate(t, admins("alice"), []map[string]any{
 		member("alice@example.org", "accepted", true, SuperAdministrator, ""),
 	}, nil)
-	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 1 admins are cloudflare super admins; at least 2 are needed" {
+	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 1 operators are cloudflare super admins; at least 2 are needed" {
 		t.Errorf("super admins = %+v", r.SuperAdmins)
 	}
 }
@@ -259,7 +259,7 @@ func TestAnAdminWithNoEmailFails(t *testing.T) {
 	r, _ := evaluate(t, []Admin{{Username: "alice", Email: "alice@example.org"}, {Username: "bob"}}, []map[string]any{
 		member("alice@example.org", "accepted", true, SuperAdministrator, ""),
 	}, nil)
-	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 2 admins not cloudflare super admin" {
+	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 2 operators not cloudflare super admin" {
 		t.Errorf("super admins = %+v", r.SuperAdmins)
 	}
 }
@@ -270,7 +270,7 @@ func TestTwoFactorIsCountedOnMatchedAdminsOnly(t *testing.T) {
 		member("bob@example.org", "accepted", false, SuperAdministrator, ""),
 		member("carol@example.org", "accepted", false, "Administrator", ""),
 	}, nil)
-	if r.TwoFA.Healthy || r.TwoFA.Message != "1 of 2 admins have 2fa off" {
+	if r.TwoFA.Healthy || r.TwoFA.Message != "1 of 2 operators have 2fa off" {
 		t.Errorf("2fa = %+v", r.TwoFA)
 	}
 }
@@ -414,7 +414,7 @@ func TestEveryAccountAboveTheDomainIsChecked(t *testing.T) {
 	if !r.SuperAdmins.Healthy {
 		t.Errorf("super admins = %+v", r.SuperAdmins)
 	}
-	if r.TwoFA.Healthy || r.TwoFA.Message != "1 of 2 admins have 2fa off" {
+	if r.TwoFA.Healthy || r.TwoFA.Message != "1 of 2 operators have 2fa off" {
 		t.Errorf("2fa off in the parent's account is not counted: %+v", r.TwoFA)
 	}
 	// Bob is no Super Administrator of the parent's account: not enough.
@@ -424,7 +424,7 @@ func TestEveryAccountAboveTheDomainIsChecked(t *testing.T) {
 		t.Fatal(err)
 	}
 	r = Evaluate(admins("alice", "bob"), got, hasher, nil, l.printf)
-	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 2 admins not cloudflare super admin" {
+	if r.SuperAdmins.Healthy || r.SuperAdmins.Message != "1 of 2 operators not cloudflare super admin" {
 		t.Errorf("super admins = %+v", r.SuperAdmins)
 	}
 }
