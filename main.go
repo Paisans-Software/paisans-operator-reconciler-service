@@ -36,9 +36,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/paisans-software/pocketid-go"
+
 	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
 	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
-	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
 const (

@@ -10,6 +10,7 @@
 package operatorreconciler_test
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -18,10 +19,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paisans-software/pocketid-go"
+
 	"github.com/paisans-software/paisans-stack/internal/blueprints"
 	"github.com/paisans-software/paisans-stack/internal/config"
 	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
-	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
 func startPocketID(t *testing.T) *pocketid.Client {
@@ -74,22 +76,22 @@ func TestRealPocketIDIsCheckedAndNotWritten(t *testing.T) {
 	c := startPocketID(t)
 	var groups []string
 	for _, name := range []string{"members", "operators"} {
-		g, err := c.CreateGroup(name)
+		g, err := c.CreateGroup(context.Background(), name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		groups = append(groups, g.ID)
 	}
-	alice, err := c.CreateUser(pocketid.NewUser{Username: "alice", Email: ptr("alice@example.org"), FirstName: "Alice", DisplayName: "Alice", IsAdmin: true})
+	alice, err := c.CreateUser(context.Background(), pocketid.NewUser{Username: "alice", Email: ptr("alice@example.org"), FirstName: "Alice", DisplayName: "Alice", IsAdmin: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	bob, err := c.CreateUser(pocketid.NewUser{Username: "bob", Email: ptr("bob@example.org"), FirstName: "Bob", DisplayName: "Bob"})
+	bob, err := c.CreateUser(context.Background(), pocketid.NewUser{Username: "bob", Email: ptr("bob@example.org"), FirstName: "Bob", DisplayName: "Bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, id := range []string{alice.ID, bob.ID} {
-		if err := c.SetUserGroups(id, groups); err != nil {
+		if err := c.SetUserGroups(context.Background(), id, groups); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -105,7 +107,7 @@ func TestRealPocketIDIsCheckedAndNotWritten(t *testing.T) {
 	if r := pass("paisans"); r.Healthy || !strings.Contains(r.Message, "alice is a pocket id administrator") {
 		t.Fatalf("paisans: %+v", r)
 	}
-	got, err := c.User(bob.ID)
+	got, err := c.User(context.Background(), bob.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +115,7 @@ func TestRealPocketIDIsCheckedAndNotWritten(t *testing.T) {
 		t.Errorf("bob changed: %+v", got)
 	}
 	// Taken out of operators, bob fails check 1.
-	if err := c.SetUserGroups(bob.ID, groups[:1]); err != nil {
+	if err := c.SetUserGroups(context.Background(), bob.ID, groups[:1]); err != nil {
 		t.Fatal(err)
 	}
 	if r := pass("pocket-id"); r.Healthy || !strings.Contains(r.Message, "operator bob is not in operators") {
@@ -121,14 +123,14 @@ func TestRealPocketIDIsCheckedAndNotWritten(t *testing.T) {
 	}
 	// carol holds operators and is not one, so check 3 names her: the real
 	// user list carries the groups that check reads.
-	if err := c.SetUserGroups(bob.ID, groups); err != nil {
+	if err := c.SetUserGroups(context.Background(), bob.ID, groups); err != nil {
 		t.Fatal(err)
 	}
-	carol, err := c.CreateUser(pocketid.NewUser{Username: "carol", Email: ptr("carol@example.org"), FirstName: "Carol", DisplayName: "Carol"})
+	carol, err := c.CreateUser(context.Background(), pocketid.NewUser{Username: "carol", Email: ptr("carol@example.org"), FirstName: "Carol", DisplayName: "Carol"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := c.SetUserGroups(carol.ID, groups); err != nil {
+	if err := c.SetUserGroups(context.Background(), carol.ID, groups); err != nil {
 		t.Fatal(err)
 	}
 	if r := pass("pocket-id"); r.Healthy || !strings.Contains(r.Message, "carol is in operators and not an operator") {

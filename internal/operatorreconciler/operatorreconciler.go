@@ -21,8 +21,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/paisans-software/pocketid-go"
+
 	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
-	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
 const (
@@ -56,8 +57,8 @@ const (
 // PocketID is the part of the Pocket ID API the reconciler uses. Both are
 // reads.
 type PocketID interface {
-	FindGroup(name string) (*pocketid.Group, error)
-	Users() ([]pocketid.User, error)
+	FindGroup(ctx context.Context, name string) (*pocketid.Group, error)
+	Users(ctx context.Context) ([]pocketid.User, error)
 }
 
 // Result is what one pass found.
@@ -207,7 +208,8 @@ func (g *Reconciler) DNSStatus(path DNSPath) (int, string) {
 // operator with no enabled account is left out: check 1 of the pass reports
 // them.
 func (g *Reconciler) dns() dnscontinuity.Result {
-	users, err := g.API.Users()
+	ctx := context.Background()
+	users, err := g.API.Users(ctx)
 	if err != nil {
 		return dnscontinuity.Failed("pocket id unreadable")
 	}
@@ -249,10 +251,11 @@ func (g *Reconciler) sortedOperators() []string {
 // pass reads Pocket ID once and holds it to the three checks. A group that
 // does not exist is a failure of its own rather than one per operator.
 func (g *Reconciler) pass() Result {
+	ctx := context.Background()
 	if g.Standby() {
 		return Result{Healthy: true, Message: "standby", standby: true}
 	}
-	users, err := g.API.Users()
+	users, err := g.API.Users(ctx)
 	if err != nil {
 		r := unhealthy("reading users: %v", err)
 		r.Retry = true
@@ -260,7 +263,7 @@ func (g *Reconciler) pass() Result {
 	}
 	groups := map[string]*pocketid.Group{}
 	for _, name := range []string{g.MemberGroup, OperatorsGroup} {
-		grp, err := g.API.FindGroup(name)
+		grp, err := g.API.FindGroup(ctx, name)
 		if err != nil {
 			r := unhealthy("reading groups: %v", err)
 			r.Retry = true

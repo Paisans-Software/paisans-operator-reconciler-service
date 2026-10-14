@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/paisans-software/pocketid-go"
+
 	"github.com/paisans-software/paisans-stack/internal/blueprints"
 	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
-	"github.com/paisans-software/paisans-stack/internal/pocketid"
 )
 
 const key = "static-key-0123456789"
