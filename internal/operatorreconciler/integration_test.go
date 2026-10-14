@@ -1,7 +1,7 @@
 //go:build pocketid_integration
 
 // This file runs reconciler passes against a real ghcr.io/pocket-id/pocket-id
-// container, the version the pocket-id blueprint pins, so what the reconciler
+// container, defaultPocketIDImage or POCKETID_IMAGE, so what the reconciler
 // assumes about the API (the list carries each user's groups and flags, and
 // the static key's user is an administrator with a fixed ID) is checked
 // against Pocket ID rather than against the fake.
@@ -21,25 +21,22 @@ import (
 
 	"github.com/paisans-software/pocketid-go"
 
-	"github.com/paisans-software/paisans-stack/internal/blueprints"
-	"github.com/paisans-software/paisans-stack/internal/config"
-	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
+	"github.com/paisans-software/paisans-operator-reconciler-service/internal/operatorreconciler"
 )
+
+// defaultPocketIDImage is the Pocket ID release the core catalog's pocket-id
+// track resolved to when this test was last changed.
+const defaultPocketIDImage = "ghcr.io/pocket-id/pocket-id:v2.18.0"
 
 func startPocketID(t *testing.T) *pocketid.Client {
 	t.Helper()
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker is not on PATH; skipping the Pocket ID integration test")
 	}
-	// The foundation names a track, which docker cannot run; set
-	// PAISANS_POCKET_ID_IMAGE to a tag on it, as the render package's
-	// standby test takes PAISANS_STANDBY_IMAGE.
-	image, ok := os.Getenv("PAISANS_POCKET_ID_IMAGE"), true
+	// POCKETID_IMAGE names another release to run against.
+	image := os.Getenv("POCKETID_IMAGE")
 	if image == "" {
-		image, ok = blueprints.DefaultImage(config.BlueprintPocketID, "app")
-	}
-	if !ok {
-		t.Fatal("the pocket-id blueprint names no app image")
+		image = defaultPocketIDImage
 	}
 	name := fmt.Sprintf("paisans-reconciler-it-%d", time.Now().UnixNano())
 	out, err := exec.Command("docker", "run", "-d", "--name", name, "-p", "127.0.0.1::1411",

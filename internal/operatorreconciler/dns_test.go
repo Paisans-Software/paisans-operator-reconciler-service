@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/paisans-software/paisans-stack/internal/dnscontinuity"
-	"github.com/paisans-software/paisans-stack/internal/operatorreconciler"
+	"github.com/paisans-software/paisans-operator-reconciler-service/internal/dnscontinuity"
+	"github.com/paisans-software/paisans-operator-reconciler-service/internal/operatorreconciler"
 )
 
 // fakeMembers is the DNS provider's members list, counting its reads.
