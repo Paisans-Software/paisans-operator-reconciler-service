@@ -8,7 +8,9 @@ whether the deployment's operators are who its configuration says:
 * every operator is an enabled user in the member group and in `operators`,
 * every enabled member of `operators` is an operator,
 * every Pocket ID administrator is an operator, and under `management:
-  paisans` there are none.
+  paisans` there are none,
+* at least two operators are declared, so that one lost workstation cannot
+  stop the deployment.
 
 A pass runs at start and every two hours. The design is
 `docs/specs/2026-10-14-operators-and-management.md` and
