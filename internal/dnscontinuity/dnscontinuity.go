@@ -27,7 +27,8 @@ import (
 
 const (
 	// Minimum is the fewest operators who must be Super Administrators,
-	// validate's floor of operators: one is a single loss from none.
+	// as the reconciler's pass holds the declared operators to: one is a
+	// single loss from none.
 	Minimum = 2
 	// SuperAdministrator is the role, and the permission group, that can
 	// manage an account's members ("Can edit any Cloudflare setting, make

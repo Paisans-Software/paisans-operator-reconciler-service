@@ -9,6 +9,10 @@ All notable changes to this project are documented here, in the
 
 - The image carries /THIRD_PARTY_NOTICES: the licenses and notices of the Go standard library and every module the binary links.
 
+### Changed
+
+- A pass fails while only one operator is declared, so the operators heartbeat alerts until a second is added.
+
 ## [0.3.0] - 2026-10-14
 
 ### Added

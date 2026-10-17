@@ -256,6 +256,24 @@ func TestTheOperatorsGroupHoldsOnlyOperators(t *testing.T) {
 	}
 }
 
+// One declared operator fails the pass even when they check out, so the
+// operators heartbeat says so until a second is declared.
+func TestOneOperatorFails(t *testing.T) {
+	f := healthyFake()
+	f.users = append(f.users[:1], f.users[2:]...)
+	g, _, log := reconcilerFor(t, f, false, "paisans")
+	g.Operators = []string{"alice"}
+	r := g.Pass()
+	code, body := g.Status()
+	want := "only one operator, alice: declare a second so one lost workstation cannot stop the deployment"
+	if r.Healthy || code != 503 || body != want {
+		t.Errorf("status %d %q, want 503 %q", code, body, want)
+	}
+	if !strings.Contains(log.String(), want) {
+		t.Errorf("the log %q does not name the failure", log)
+	}
+}
+
 // Every failure is named, not only the first.
 func TestEveryFailureIsNamed(t *testing.T) {
 	f := healthyFake()
