@@ -161,7 +161,7 @@ func healthyFake() *fakePocketID {
 		add(fakeUser{ID: operatorreconciler.SyntheticUserID, Username: "static-api-user", IsAdmin: true})
 }
 
-// The group and management values are a contract with the paisans CLI's
+// The group and management values are a contract with the Paisans toolkit's
 // pocket-id blueprint, which states the same three; each side pins them, so
 // either side changing one fails its own tests.
 func TestTheContractValues(t *testing.T) {
@@ -253,6 +253,24 @@ func TestTheOperatorsGroupHoldsOnlyOperators(t *testing.T) {
 	g, _, _ = reconcilerFor(t, f, false, "paisans")
 	if r := g.Pass(); r.Message != "no group named operators" {
 		t.Errorf("message %q", r.Message)
+	}
+}
+
+// One declared operator fails the pass even when they check out, so the
+// operators heartbeat says so until a second is declared.
+func TestOneOperatorFails(t *testing.T) {
+	f := healthyFake()
+	f.users = append(f.users[:1], f.users[2:]...)
+	g, _, log := reconcilerFor(t, f, false, "paisans")
+	g.Operators = []string{"alice"}
+	r := g.Pass()
+	code, body := g.Status()
+	want := "only one operator, alice: declare a second so one lost workstation cannot stop the deployment"
+	if r.Healthy || code != 503 || body != want {
+		t.Errorf("status %d %q, want 503 %q", code, body, want)
+	}
+	if !strings.Contains(log.String(), want) {
+		t.Errorf("the log %q does not name the failure", log)
 	}
 }
 

@@ -248,7 +248,7 @@ func (g *Reconciler) sortedOperators() []string {
 	return out
 }
 
-// pass reads Pocket ID once and holds it to the three checks. A group that
+// pass reads Pocket ID once and holds it to the four checks. A group that
 // does not exist is a failure of its own rather than one per operator.
 func (g *Reconciler) pass() Result {
 	ctx := context.Background()
@@ -340,6 +340,13 @@ func (g *Reconciler) pass() Result {
 		}
 	}
 	sort.Strings(admins)
+
+	// 4. At least two operators are declared. The toolkit's validate only
+	// warns about one, so that a deployment can run while a second is
+	// found, and this keeps the operators heartbeat failing until one is.
+	if len(operators) == 1 {
+		failures = append(failures, "only one operator, "+operators[0]+": declare a second so one lost workstation cannot stop the deployment")
+	}
 
 	if len(failures) > 0 {
 		for _, f := range failures {

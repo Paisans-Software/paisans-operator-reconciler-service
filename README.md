@@ -8,12 +8,14 @@ whether the deployment's operators are who its configuration says:
 * every operator is an enabled user in the member group and in `operators`,
 * every enabled member of `operators` is an operator,
 * every Pocket ID administrator is an operator, and under `management:
-  paisans` there are none.
+  paisans` there are none,
+* at least two operators are declared, so that one lost workstation cannot
+  stop the deployment.
 
 A pass runs at start and every two hours. The design is
 `docs/specs/2026-10-14-operators-and-management.md` and
-`docs/specs/2026-10-13-dns-admin-continuity.md` in the paisans CLI's
-repository, `Paisans-Software/paisans-stack`, whose pocket-id blueprint
+`docs/specs/2026-10-13-dns-admin-continuity.md` in the Paisans
+repository, `Paisans-Software/paisans-cli`, whose pocket-id blueprint
 renders this service and its environment.
 
 ## Image
@@ -49,13 +51,19 @@ go test -tags pocketid_integration ./internal/operatorreconciler/    # needs doc
 The integration test runs passes against a real Pocket ID container;
 `POCKETID_IMAGE` names another release to run against.
 
-## Contract with the paisans CLI
+## Contract with Paisans
 
 The group `operators` and the management values `paisans` and `pocket-id`
-are shared with the CLI's pocket-id blueprint. Each repository's tests pin
-the three values, so a change on one side fails that side's tests until the
+are shared with the pocket-id blueprint in `Paisans-Software/paisans-cli`.
+Each repository's tests pin the three values, so a change on one side fails
+that side's tests until the
 other follows.
 
 ## Licence
 
 AGPL-3.0-or-later. The full text is in `LICENSE`.
+
+The binary links the Go standard library and `pocketid-go` under their own
+licenses. `scripts/third-party-notices.sh` prints those licenses and notices
+for the packages a binary is built from, and the image carries its output as
+`/THIRD_PARTY_NOTICES`, beside `/LICENSE`.
